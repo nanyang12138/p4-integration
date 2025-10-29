@@ -1,0 +1,105 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="page-title">
+  <h2>Create Integration Job</h2>
+  {% set cfg = (config or {}) %}
+  {% set exec = (cfg.get('exec', {}) if cfg else {}) %}
+  <span class="badge">Mode: {{ exec.get('mode','local') or 'local' }}</span>
+</div>
+
+<div class="group">
+  <div class="group-title">Execution</div>
+  <div class="card">
+    <div class="section-title">Step 1 · Execution Mode</div>
+  {% set ssh = (exec.get('ssh', {}) if exec else {}) %}
+  <div class="row" style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+    <span style="color: var(--muted);">Current:</span>
+    <span class="badge">{% if exec.get('mode') == 'ssh' %}ssh {{ ssh.get('user','') }}@{{ ssh.get('host','') }}:{{ ssh.get('port',22) }}{% else %}local{% endif %}</span>
+    <a class="btn" href="/admin/exec">Change</a>
+    <button class="btn" id="btnTest" type="button">Test Connection</button>
+    <span id="testResult" class="badge" style="display:none;"></span>
+  </div>
+
+  <script>
+  (function(){
+    function testConn(){
+      var el = document.getElementById('testResult'); if(el) { el.style.display='inline-block'; el.textContent = 'Testing...'; el.className = 'badge'; }
+      if(window.__openHealthModal) {
+        window.__openHealthModal().then(function(res){
+          var data = (res && res.data) || {}; var ok = !!(res && res.ok);
+          var el = document.getElementById('testResult'); if(!el) return;
+          el.textContent = ok ? ('OK (' + (data.exec_mode||'?') + ')') : ('FAILED' + (data.error ? (': ' + data.error) : ''));
+          el.className = 'badge ' + (ok ? 'ok' : 'err');
+          var btnCreate = document.getElementById('btnCreate'); if(btnCreate){ btnCreate.disabled = !ok; }
+        });
+      }
+    }
+    var bTest = document.getElementById('btnTest'); if(bTest) bTest.addEventListener('click', testConn);
+  })();
+  </script>
+
+  <div class="section-title">Step 2 · Create Integration Job</div>
+  <form method="post" action="/admin/jobs/create">
+    <div>
+      <label>Branch Spec (optional)</label><br/>
+      {% set specs = (config.get('specs', {}) if config else {}) %}
+      <input id="specInput" list="spec-suggestions" type="text" name="spec" style="width: 100%" placeholder="e.g. gfxip_unified_main_to_orion" />
+      <datalist id="spec-suggestions">
+        {% for name, sp in specs.items() %}
+          <option value="{{ name }}">{{ name }}</option>
+        {% endfor %}
+      </datalist>
+    </div>
+    <div id="srcTgtGroup">
+      <div>
+        <label>Source</label><br/>
+        {% set defaults = (config.get('defaults', {}) if config else {}) %}
+        <input type="text" name="source" style="width: 100%" value="{{ defaults.get('source','') }}" />
+      </div>
+      <div>
+        <label>Target</label><br/>
+        <input type="text" name="target" style="width: 100%" value="{{ defaults.get('target','') }}" />
+      </div>
+    </div>
+    <div>
+      <label id="clLabel">Changelist (optional)</label><br/>
+      <input type="text" name="changelist" style="width: 100%" placeholder="e.g. 123456" />
+      <div id="clHelp" style="color: var(--muted); font-size: 12px; margin-top: 4px;">
+        Without Branch Spec: integrates "p4 integ <source>...@<changelist> <target>...".
+        With Branch Spec: integrates "p4 integ -b <spec> ...@<changelist>".
+      </div>
+    </div>
+    <div style="margin-top:8px; display:flex; gap:16px; align-items:center;">
+      <label><input type="checkbox" name="trial" value="1" /> Trial Mode (p4push -trial)</label>
+    </div>
+    <div style="margin-top:8px; display:flex; gap:8px;">
+      <button id="btnCreate" class="btn btn-primary" type="submit">Create</button>
+    </div>
+  <script>
+  (function(){
+    var spec = document.getElementById('specInput');
+    var srcTgt = document.getElementById('srcTgtGroup');
+    var clLabel = document.getElementById('clLabel');
+    var clHelp = document.getElementById('clHelp');
+    var sourceInput = document.querySelector('input[name="source"]');
+    var targetInput = document.querySelector('input[name="target"]');
+    function update(){
+      var hasSpec = spec && spec.value.trim().length > 0;
+      if (srcTgt) srcTgt.style.display = hasSpec ? 'none' : '';
+      if (sourceInput) sourceInput.disabled = hasSpec;
+      if (targetInput) targetInput.disabled = hasSpec;
+      if (clLabel) clLabel.textContent = hasSpec ? 'Changelist (source @change)' : 'Changelist (optional)';
+      if (clHelp) clHelp.textContent = hasSpec
+        ? 'With Branch Spec: integrates "p4 integ -b <spec> ...@<changelist>". Source/Target not required.'
+        : 'Without Branch Spec: integrates "p4 integ <source>...@<changelist> <target>...".';
+    }
+    if (spec){
+      spec.addEventListener('input', update);
+      update();
+    }
+  })();
+  </script>
+  </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,118 @@
+{% extends "layout.html" %}
+{% block content %}
+<h3>Visual Merge: <code>{{ file }}</code></h3>
+<div id="merge-root" style="border:1px solid #ddd; height:72vh;"></div>
+<div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+  <button class="btn" id="btn-apply-merge">Apply Merge (-am)</button>
+  <button class="btn" id="btn-apply-theirs">Apply Theirs (-at)</button>
+  <button class="btn" id="btn-apply-yours">Apply Yours (-ay)</button>
+  <span style="margin:0 8px;">|</span>
+  <button class="btn" id="btn-prev">Prev Conflict</button>
+  <button class="btn" id="btn-next">Next Conflict</button>
+  <a class="btn" href="/admin/jobs/{{ job.id }}">Back</a>
+  <span id="status" style="margin-left:8px; color:#555;"></span>
+  <span style="margin-left:auto; color:#999;">Auto refresh every 30s</span>
+  <script>setTimeout(function(){ try { if(window.opener) window.opener.location.reload(); } catch(_){} }, 30000);</script>
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/merge/merge.css">
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/merge/merge.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/diff-match-patch@1.0.5/index.js"></script>
+
+<script>
+(function(){
+  var root = document.getElementById('merge-root');
+  var file = {{ file|tojson }};
+  var jobId = {{ job.id|tojson }};
+  var view = null;
+  var status = document.getElementById('status');
+  var conflicts = [];
+  var indexInList = -1;
+
+  function fetchBundle(){
+    var url = '/api/jobs/' + jobId + '/diff_bundle?file=' + encodeURIComponent(file);
+    return fetch(url).then(function(r){ if(!r.ok) throw new Error('load bundle failed'); return r.json(); });
+  }
+
+  function goNextDiff(){ try { view.editor().execCommand('goNextDiff'); } catch(e){} }
+  function goPrevDiff(){ try { view.editor().execCommand('goPrevDiff'); } catch(e){} }
+
+  function loadConflicts(){
+    return fetch('/api/jobs/' + jobId)
+      .then(function(r){ return r.json(); })
+      .then(function(j){ conflicts = j.conflicts||[]; indexInList = conflicts.indexOf(file); })
+      .catch(function(){ conflicts = []; indexInList = -1; });
+  }
+
+  function init(){
+    status.textContent = 'Loading...';
+    Promise.all([
+      loadConflicts(),
+      fetchBundle()
+    ]).then(function(parts){
+      var bundle = parts[1];
+      var yours = bundle.yours || '';
+      var theirs = bundle.theirs || '';
+      var merged = bundle.merge || '';
+      view = CodeMirror.MergeView(root, {
+        value: merged,
+        origLeft: yours,
+        orig: theirs,
+        lineNumbers: true,
+        mode: undefined,
+        highlightDifferences: true,
+        collapseIdentical: true,
+        connect: 'align',
+      });
+      status.textContent = '';
+      setTimeout(goNextDiff, 50);
+    }).catch(function(e){ status.textContent = e.message; });
+  }
+
+  function postResolve(mode){
+    status.textContent = 'Applying ' + mode + ' ...';
+    var fd = new FormData();
+    fd.append('mode', mode);
+    fd.append('files', file);
+    fetch('/admin/jobs/' + jobId + '/resolve', { method: 'POST', body: fd })
+      .then(function(r){ if(r.status===409) throw new Error('Job is resolving, please wait.'); return r.text(); })
+      .then(function(){
+        status.textContent = 'Done.';
+        try { window.opener && window.opener.location.reload(); } catch(_){ }
+        // If more files left, go next automatically
+        if(indexInList >= 0 && conflicts.length > 0){
+          // reload list and redirect to next remaining conflict
+          return loadConflicts().then(function(){
+            var nextIndex = indexInList;
+            // if current file is resolved, it will drop from list; prefer same index
+            if(nextIndex >= conflicts.length) nextIndex = conflicts.length - 1;
+            if(nextIndex >= 0){
+              var nextFile = conflicts[nextIndex];
+              if(nextFile && nextFile !== file){
+                location.href = '/admin/jobs/' + jobId + '/merge?file=' + encodeURIComponent(nextFile);
+              } else if(conflicts.length > nextIndex+1) {
+                location.href = '/admin/jobs/' + jobId + '/merge?file=' + encodeURIComponent(conflicts[nextIndex+1]);
+              }
+            }
+          });
+        }
+      })
+      .catch(function(e){ status.textContent = e.message; });
+  }
+
+  document.getElementById('btn-apply-merge').onclick = function(){ postResolve('merge'); }
+  document.getElementById('btn-apply-theirs').onclick = function(){ postResolve('accept-theirs'); }
+  document.getElementById('btn-apply-yours').onclick = function(){ postResolve('accept-yours'); }
+  document.getElementById('btn-next').onclick = goNextDiff;
+  document.getElementById('btn-prev').onclick = goPrevDiff;
+
+  // No keyboard shortcuts to avoid accidental operations
+
+  init();
+})();
+</script>
+{% endblock %}
+
+

@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+{% block content %}
+<h3>Edit & Resolve: <code>{{ file }}</code></h3>
+<form method="post" action="/admin/jobs/{{ job.id }}/edit">
+  <input type="hidden" name="file" value="{{ file }}" />
+  <textarea name="content" style="width:100%; height:65vh; font-family: monospace;">{{ content }}</textarea>
+  <div style="margin-top:8px;">
+    <button class="btn btn-primary" type="submit">Save and Mark Resolved (Yours)</button>
+    <a class="btn" href="/admin/jobs/{{ job.id }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}
+
+

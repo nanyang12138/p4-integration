@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+{% block content %}
+<h3>Visual Diff: <code>{{ file }}</code></h3>
+<p>Choose a version and apply to resolve:</p>
+<div style="display:flex; gap:16px;">
+  <div style="flex:1;">
+    <h4>Merged (-am)</h4>
+    <pre style="white-space: pre-wrap; border:1px solid #ddd; padding:8px; max-height: 70vh; overflow:auto;">{{ merged }}</pre>
+    <form method="post" action="/admin/jobs/{{ job.id }}/resolve">
+      <input type="hidden" name="mode" value="merge" />
+      <input type="hidden" name="files" value="{{ file }}" />
+      <button class="btn" type="submit">Apply Merge</button>
+    </form>
+  </div>
+  <div style="flex:1;">
+    <h4>Theirs (-at)</h4>
+    <pre style="white-space: pre-wrap; border:1px solid #ddd; padding:8px; max-height: 70vh; overflow:auto;">{{ theirs }}</pre>
+    <form method="post" action="/admin/jobs/{{ job.id }}/resolve">
+      <input type="hidden" name="mode" value="accept-theirs" />
+      <input type="hidden" name="files" value="{{ file }}" />
+      <button class="btn" type="submit">Apply Theirs</button>
+    </form>
+  </div>
+  <div style="flex:1;">
+    <h4>Yours (-ay)</h4>
+    <pre style="white-space: pre-wrap; border:1px solid #ddd; padding:8px; max-height: 70vh; overflow:auto;">{{ yours }}</pre>
+    <form method="post" action="/admin/jobs/{{ job.id }}/resolve">
+      <input type="hidden" name="mode" value="accept-yours" />
+      <input type="hidden" name="files" value="{{ file }}" />
+      <button class="btn" type="submit">Apply Yours</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+

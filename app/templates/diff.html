@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block content %}
+<h3>Preview: <code>{{ file }}</code></h3>
+<p>Mode: <strong>{{ mode }}</strong></p>
+<pre style="white-space: pre-wrap; border:1px solid #ddd; padding:8px; max-height: 70vh; overflow:auto;">{{ diff_text }}</pre>
+<p><a class="btn" href="/admin/jobs/{{ job.id }}">Back to Job</a></p>
+{% endblock %}
+
+

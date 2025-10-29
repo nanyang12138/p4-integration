@@ -1,0 +1,23 @@
+{% extends "layout.html" %}
+{% block content %}
+<h3>Open in P4Merge</h3>
+<p>Run the following in your Linux GUI session:</p>
+<pre id="cmd" style="white-space: pre-wrap; border:1px solid #ddd; padding:8px;">{{ cmd }}</pre>
+<button class="btn" onclick="copyCmd()">Copy</button>
+<p>Notes:</p>
+<ul>
+  <li>Keys: <code>m</code> (merge UI), <code>y/t</code> (yours/theirs).</li>
+  <li>Ensure a valid <code>p4 login</code> ticket if prompted.</li>
+  <li>Workspace: <code>{{ ws }}</code></li>
+  <li>File: <code>{{ file }}</code></li>
+  <li><a class="btn" href="/admin/jobs/{{ job.id }}">Back</a></li>
+  <li style="color:#999;">Command sets P4MERGE/P4VISUAL; no init/bootenv needed.</li>
+<script>
+function copyCmd(){
+  var t = document.getElementById('cmd').innerText;
+  navigator.clipboard.writeText(t).then(function(){ alert('Copied'); });
+}
+</script>
+{% endblock %}
+
+

@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="card">
+  <div class="section-title">Done Jobs</div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Status</th>
+        <th>Changelist</th>
+        <th>Conflicts</th>
+        <th>Updated</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+      <tr>
+        <td>
+          {% if job.readable_id %}
+          <span class="badge" style="background:#e3f2fd; color:#1565c0; font-weight:600; font-size:11px;">
+            {{ job.readable_id }}
+          </span>
+          {% else %}
+          <code style="font-size:11px;">{{ job.id[:8] }}...</code>
+          {% endif %}
+        </td>
+        <td><span class="badge">{{ job.status }}</span> {% if job.stage %}<small>({{ job.stage }})</small>{% endif %}</td>
+        <td>{{ job.changelist or '-' }}</td>
+        <td>{{ job.conflicts|length }}</td>
+        <td><span class="ts" data-ts="{{ job.updated_at or 0 }}"></span></td>
+        <td><a href="/admin/jobs/{{ job.id }}{% if is_admin %}?token={{ config.get('admin',{}).get('token','') }}{% endif %}">Detail</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+

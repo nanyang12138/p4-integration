@@ -1,0 +1,229 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="grid grid-2">
+  <form method="post" action="/admin/jobs/create" class="card">
+    <div class="section-title">Create Integration Job</div>
+    <div>
+      <label>Branch Spec (optional)</label><br/>
+      {% set specs = (config.get('specs', {}) if config else {}) %}
+      <input list="spec-suggestions" type="text" name="spec" style="width: 100%" placeholder="e.g. gfxip_unified_main_to_orion" />
+      <datalist id="spec-suggestions">
+        {% for name, sp in specs.items() %}
+          <option value="{{ name }}">{{ name }}</option>
+        {% endfor %}
+      </datalist>
+    </div>
+    <div>
+      <label>Source (e.g. //depot/branchA/...)</label><br/>
+      {% set defaults = (config.get('defaults', {}) if config else {}) %}
+      <input type="text" name="source" style="width: 100%" value="{{ defaults.get('source','') }}" />
+    </div>
+    <div>
+      <label>Target (e.g. //depot/branchB/...)</label><br/>
+      <input type="text" name="target" style="width: 100%" value="{{ defaults.get('target','') }}" />
+    </div>
+    <div>
+      <label>Changelist (optional)</label><br/>
+      <input type="text" name="changelist" style="width: 100%" placeholder="e.g. 123456" />
+    </div>
+    <div style="margin-top:8px; display:flex; gap:16px; align-items:center;">
+      <label><input type="checkbox" name="trial" value="1" /> Trial Mode (p4push -trial)</label>
+    </div>
+    <div style="margin-top:8px; display:flex; gap:8px;">
+      <button class="btn btn-primary" type="submit">Create</button>
+      <button class="btn" type="button" id="btnCheckHealth">Check P4 Health</button>
+      <a class="btn" href="/admin/specs">Manage Specs</a>
+    </div>
+  </form>
+
+  
+</div>
+
+<div class="card">
+  <div class="section-title">Jobs</div>
+  {% set feats = (config.get('features', {}) if config else {}) %}
+  {% if feats.get('advanced_ui') %}
+  <div id="dash" style="margin-bottom:8px; color: var(--muted);"></div>
+  {% endif %}
+  {% if feats.get('advanced_ui') %}
+  <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+    <select id="filter-status" style="max-width:200px;"><option value="">All statuses</option></select>
+    <input id="filter-q" placeholder="Search id/status/stage/source/target" />
+    <span style="color:var(--muted); font-size:12px;">Click headers to sort</span>
+  </div>
+  {% endif %}
+  <table>
+    <thead>
+      <tr>
+        <th data-k="id" class="sortable">ID</th>
+        <th data-k="status" class="sortable">Status</th>
+        <th data-k="changelist" class="sortable">Changelist</th>
+        <th>Flags</th>
+        <th data-k="conflicts_len" class="sortable">Conflicts</th>
+        <th data-k="updated_at" class="sortable">Updated</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="jobs-body">
+      {% for job in jobs %}
+      <tr>
+        <td><code>{{ job.id }}</code></td>
+        <td><span class="badge">{{ job.status }}</span> {% if job.stage %}<small>({{ job.stage }})</small>{% endif %}</td>
+        <td>{{ job.changelist or '-' }}</td>
+        <td>
+          {% if job.payload and job.payload.trial %}<span class="badge">trial</span>{% endif %}
+        </td>
+        <td>{{ job.conflicts|length }}</td>
+        <td><span class="ts" data-ts="{{ job.updated_at or 0 }}"></span></td>
+        <td>
+          <a href="/admin/jobs/{{ job.id }}">Detail</a>
+          {% if is_admin and job.status in ['queued','running','needs_resolve','blocked','ready_to_submit'] %}
+          <form method="post" action="/admin/jobs/{{ job.id }}/cancel" style="display:inline">
+            <button class="btn btn-danger" type="submit">Cancel</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+  // Remove full page auto-reload; we'll refresh table content instead
+  (function(){
+    var ADVANCED = {{ (config.get('features',{}).get('advanced_ui', False) if config else False) | tojson }};
+    var jobsData = [];
+    var prevMap = {};
+    var sortKey = 'updated_at';
+    var sortDir = 'desc';
+    var statusSet = new Set();
+    var filterStatus = '';
+    var filterQ = '';
+
+    function fmt(obj){ return Object.keys(obj).map(function(k){ return k+': '+obj[k]; }).join(' \u00B7 '); }
+    function load(){ if(!ADVANCED) return; fetch('/api/metrics').then(r=>r.json()).then(function(m){
+      var el = document.getElementById('dash'); if(!el) return;
+      var q = m.queues||{}; var s = m.statuses||{}; var f = m.failures||{};
+      el.innerHTML = 'Queues: ' + fmt(q) + ' \u00A0 | \u00A0 Statuses: ' + fmt(s) + ' \u00A0 | \u00A0 Failures: ' + fmt(f);
+    }).catch(function(_){}); }
+    load(); setInterval(load, 5000);
+
+    // Partial DOM update for jobs table
+    function jobFlags(j){
+      var p = j.payload||{};
+      return p.trial ? '<span class="badge">trial</span>' : '';
+    }
+    function formatTimestamp(ts){
+      if (!ts || ts === 0) return '-';
+      var now = Math.floor(Date.now() / 1000);
+      var diff = now - ts;
+      if (diff < 60) return 'just now';
+      if (diff < 3600) return Math.floor(diff / 60) + ' min ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + ' hr ago';
+      if (diff < 604800) return Math.floor(diff / 86400) + ' days ago';
+      return new Date(ts * 1000).toLocaleDateString();
+    }
+    function rowHtml(j, changed){
+      var detail = '/admin/jobs/' + j.id;
+      var cls = changed ? ' class="hl"' : '';
+      return '<tr'+cls+'>'+
+        '<td><code>'+j.id+'</code></td>'+
+        '<td><span class="badge">'+(j.status||'')+'</span>'+(j.stage?(' <small>('+j.stage+')</small>'):'')+'</td>'+
+        '<td>'+(j.changelist||'-')+'</td>'+
+        '<td>'+jobFlags(j)+'</td>'+
+        '<td>'+((j.conflicts&&j.conflicts.length)||0)+'</td>'+
+        '<td>'+formatTimestamp(j.updated_at||0)+'</td>'+
+        '<td><a href="'+detail+'">Detail</a></td>'+
+      '</tr>';
+    }
+    function renderJobs(list){
+      var tb = document.getElementById('jobs-body'); if(!tb) return;
+      var html = list.map(function(j){
+        var prev = prevMap[j.id];
+        var changed = false;
+        if(prev){
+          if(prev.status!==j.status || prev.stage!==j.stage || (prev.changelist||'')!==(j.changelist||'') || ((prev.conflicts||[]).length)!==((j.conflicts||[]).length) || prev.updated_at!==j.updated_at) changed = true;
+        }
+        return rowHtml(j, changed);
+      }).join('');
+      tb.innerHTML = html;
+      // schedule remove highlight
+      setTimeout(function(){ var els = tb.querySelectorAll('tr.hl'); els.forEach(function(e){ e.classList.remove('hl'); }); }, 1200);
+      // update prevMap snapshot
+      prevMap = {};
+      list.forEach(function(j){ prevMap[j.id] = j; });
+    }
+    function applyFilter(list){
+      return list.filter(function(j){
+        if(filterStatus && String(j.status)!==filterStatus) return false;
+        if(filterQ){
+          var q = filterQ.toLowerCase();
+          var p = j.payload||{};
+          var src = String(p.source||''); var tgt = String(p.target||'');
+          var hay = [j.id||'', j.status||'', j.stage||'', src, tgt].join(' ').toLowerCase();
+          if(hay.indexOf(q)===-1) return false;
+        }
+        return true;
+      });
+    }
+    function applySort(list){
+      var arr = list.slice();
+      arr.forEach(function(j){ j.conflicts_len = (j.conflicts&&j.conflicts.length)||0; });
+      arr.sort(function(a,b){
+        var va = a[sortKey]; var vb = b[sortKey];
+        if(va==null) va = '';
+        if(vb==null) vb = '';
+        if(va<vb) return sortDir==='asc'? -1: 1;
+        if(va>vb) return sortDir==='asc'? 1: -1;
+        return 0;
+      });
+      return arr;
+    }
+    function refresh(){
+      var list = applySort(applyFilter(jobsData));
+      renderJobs(list);
+    }
+    function fetchJobs(){ fetch('/api/jobs').then(r=>r.json()).then(function(list){ jobsData = list||[]; 
+      // initialize status options
+      statusSet = new Set(); jobsData.forEach(function(j){ if(j.status) statusSet.add(String(j.status)); });
+      var sel = document.getElementById('filter-status'); if(sel && sel.options.length<=1){ var opts = Array.from(statusSet).sort(); var html = '<option value="">All statuses</option>' + opts.map(function(s){ return '<option value="'+s+'">'+s+'</option>'; }).join(''); sel.innerHTML = html; }
+      refresh();
+    }).catch(function(_){}); }
+    // initial load of table
+    fetchJobs();
+
+    // SSE auto-refresh (debounced) when any job event arrives: refresh table body only
+    try{
+      var es = ADVANCED ? new EventSource('/api/stream') : null;
+      var last = 0; var pending = false;
+      function trigger(){
+        var now = Date.now();
+        if (now - last > 1500) { last = now; fetchJobs(); return; }
+        if (!pending) { pending = true; setTimeout(function(){ pending = false; fetchJobs(); }, 800); }
+      }
+      if(es){ es.onmessage = function(_ev){ trigger(); }; }
+    }catch(_){ /* ignore */ }
+
+    // filters
+    var sel = document.getElementById('filter-status');
+    if(sel){ sel.addEventListener('change', function(){ filterStatus = sel.value||''; refresh(); }); }
+    var q = document.getElementById('filter-q');
+    if(q){ q.addEventListener('input', function(){ filterQ = q.value||''; refresh(); }); }
+
+    // sorting
+    var ths = document.querySelectorAll('th.sortable');
+    Array.prototype.forEach.call(ths, function(th){ th.style.cursor='pointer'; th.addEventListener('click', function(){ var k = th.getAttribute('data-k'); if(!k) return; if(sortKey===k){ sortDir = (sortDir==='asc'?'desc':'asc'); } else { sortKey = k; sortDir = 'asc'; } refresh(); }); });
+  })();
+  </script>
+<script>
+  (function(){
+    var b = document.getElementById('btnCheckHealth');
+    if(b){ b.addEventListener('click', function(){ if(window.__openHealthModal) window.__openHealthModal(); }); }
+  })();
+</script>
+<style>
+  @keyframes rowFlash { 0%{ background:#2a3a70; } 100%{ background: transparent; } }
+  tr.hl { animation: rowFlash 1.2s ease-out; }
+</style>
+{% endblock %}

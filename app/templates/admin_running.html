@@ -1,0 +1,163 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="card">
+  <div class="section-title">Running Jobs</div>
+  <div style="display:flex; gap:12px; align-items:center; margin-bottom:8px; justify-content:space-between; flex-wrap:wrap;">
+    <!-- Left: Worker status -->
+    <div style="display:flex; gap:12px; align-items:center;">
+      <div id="wk" style="color: var(--muted);" title="Worker thread and queue size"></div>
+      <form id="wk-restart" method="post" action="/api/worker/restart" onsubmit="return false;">
+        <button class="btn" type="submit" title="Restart the worker thread (use only if stuck)">Restart Worker</button>
+        <span id="wk-restart-res" style="color: var(--muted);"></span>
+      </form>
+    </div>
+    
+    <!-- Center: Legend -->
+    <div style="font-size:13px; color:var(--text); display:flex; gap:16px; align-items:center;">
+      <span style="display:flex; align-items:center; gap:4px;">
+        <span class="dot dot-green"></span> Active
+      </span>
+      <span style="display:flex; align-items:center; gap:4px;">
+        <span class="dot dot-gray"></span> Idle
+      </span>
+      <span style="display:flex; align-items:center; gap:4px;">
+        <span class="dot dot-red"></span> Error
+      </span>
+    </div>
+    
+    <!-- Right: Filter -->
+    <div style="display:flex; gap:6px; align-items:center;">
+      <label for="f-alive" style="color:var(--muted); font-size:12px;">Filter</label>
+      <select id="f-alive" style="max-width:120px;">
+        <option value="">All</option>
+        <option value="alive">Active</option>
+        <option value="idle">Idle</option>
+        <option value="err">Error</option>
+      </select>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Status</th>
+        <th>Changelist</th>
+        <th>Alive</th>
+        <th>Conflicts</th>
+        <th>Updated</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="run-body">
+      {% for job in jobs %}
+      <tr data-id="{{ job.id }}">
+        <td>
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+            {% if job.readable_id %}
+            <span class="badge" style="background:#e3f2fd; color:#1565c0; font-weight:600; font-size:11px;">
+              {{ job.readable_id }}
+            </span>
+            {% else %}
+            <code style="font-size:11px; color:#999;">{{ job.id[:8] }}</code>
+            {% endif %}
+            <button class="btn" onclick="copyToClipboard('{{ job.id }}')" style="padding:2px 6px; font-size:10px; border:none; background:transparent; cursor:pointer;" title="Copy full UUID">📋</button>
+          </div>
+          <div style="font-size:12px;color:var(--muted);">
+            {% set p = job.payload or {} %}
+            {% if p.spec %}
+              <strong>{{ p.spec }}</strong> @{{ p.changelist or 'head' }}
+            {% elif p.source and p.target %}
+              {{ p.source.split('/')[-1] or p.source }} → {{ p.target.split('/')[-1] or p.target }}
+            {% else %}
+              -
+            {% endif %}
+          </div>
+        </td>
+        <td><span class="badge">{{ job.status }}</span> {% if job.stage %}<small>({{ job.stage }})</small>{% endif %}</td>
+        <td><span id="changelist-{{ job.id }}">{{ job.changelist or '-' }}</span></td>
+        <td><span class="dot dot-gray" id="alive-{{ job.id }}" title="idle"></span></td>
+        <td>{{ job.conflicts|length }}</td>
+        <td><span class="ts" data-ts="{{ job.updated_at or 0 }}"></span></td>
+        <td><a href="/admin/jobs/{{ job.id }}">Detail</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<script>
+(function(){
+  function load(){ fetch('/api/worker/status').then(r=>r.json()).then(function(m){
+    var el = document.getElementById('wk'); if(!el) return;
+    var alive = m.alive ? 'alive' : 'dead';
+    var q = m.queues||{};
+    el.innerHTML = 'Worker: ' + alive + ' · queue: '+(q.normal||0) + (m.error?(' · error='+m.error):'');
+  }).catch(function(_){}); }
+  load(); setInterval(load, 5000);
+
+  function heartbeatAll(){
+    var rows = document.querySelectorAll('#run-body tr[data-id]');
+    rows.forEach(function(row){
+      var id = row.getAttribute('data-id');
+      
+      // Get heartbeat status for alive/idle indicator
+      fetch('/api/jobs/' + id + '/heartbeat').then(r=>r.json()).then(function(res){
+        var el = document.getElementById('alive-' + id); if(!el) return;
+        row.classList.remove('row-alive');
+        row.classList.remove('row-warn');
+        var aliveFlag = (res && (res.computed_alive === true)) ? true : false;
+        if(aliveFlag){
+          el.className = 'dot dot-green';
+          el.title = 'alive';
+          row.classList.add('row-alive');
+          row.setAttribute('data-alive', 'alive');
+        } else {
+          // If API available but not alive, show idle; if request failed, catch will set error
+          el.className = 'dot dot-gray';
+          el.title = 'idle';
+          row.setAttribute('data-alive', 'idle');
+        }
+      }).catch(function(_){ var el = document.getElementById('alive-' + id); if(el){ el.className='dot dot-red'; el.title='error'; } row.classList.add('row-warn'); row.setAttribute('data-alive', 'err'); });
+      
+      // Get full job data for changelist and other info
+      fetch('/api/jobs/' + id).then(r=>r.json()).then(function(job){
+        // Update changelist
+        var clEl = document.getElementById('changelist-' + id);
+        if(clEl && job.changelist) {
+          clEl.textContent = job.changelist;
+        }
+      }).catch(function(_){
+        // Ignore errors for job data fetch
+      });
+    });
+  }
+  heartbeatAll(); setInterval(heartbeatAll, 10000);
+
+  var frm = document.getElementById('wk-restart');
+  if(frm){ frm.addEventListener('submit', function(){
+    if(!confirm('Restart task executor now? 仅在卡死或无响应时使用。')) return;
+    fetch('/api/worker/restart', {method:'POST'})
+      .then(r=>r.json())
+      .then(function(res){ var el=document.getElementById('wk-restart-res'); if(el){ el.textContent = res && res.ok ? 'OK' : (res.error||'error'); setTimeout(function(){ el.textContent=''; }, 2000);} load(); })
+      .catch(function(_){ var el=document.getElementById('wk-restart-res'); if(el){ el.textContent='error'; setTimeout(function(){ el.textContent=''; }, 2000);} });
+  }); }
+  // filtering
+  var sel = document.getElementById('f-alive');
+  function applyFilter(){
+    var v = sel ? (sel.value||'') : '';
+    var rows = document.querySelectorAll('#run-body tr[data-id]');
+    rows.forEach(function(row){
+      var state = row.getAttribute('data-alive') || '';
+      row.style.display = (!v || v === state) ? '' : 'none';
+    });
+  }
+  if(sel){ sel.addEventListener('change', applyFilter); }
+  setInterval(applyFilter, 11000);
+})();
+</script>
+<style>
+  .row-alive td { background: #eefaf3 !important; }
+  .row-warn td { background: #fff8e1 !important; }
+</style>
+{% endblock %}
+
+

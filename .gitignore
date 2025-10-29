@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Security: Never commit config files with sensitive data
+config.yaml
+config.local.yaml
+
+# Data and logs
+data/
+*.log
+*.jsonl
+
+# Temporary files
+.p4_integ_name_check.sh
+name_check_file_list
+jobs_dump.json
+
+# OS
+.DS_Store
+Thumbs.db
+

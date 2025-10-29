@@ -1,0 +1,201 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>P4 Integration Admin</title>
+    <style>
+      :root{
+        /* Light brand palette */
+        --bg:#f6f8fc; --panel:rgba(255,255,255,0.9); --panel-solid:#ffffff; --text:#0B1020; --muted:#6B7280;
+        --primary:#2F6BFF; --primary-2:#7CB5FF; --danger:#D93644; --ok:#10B981; --warn:#F59E0B;
+        --border:rgba(10,20,60,0.12); --chip:rgba(10,20,60,0.06); --glow:rgba(47,107,255,0.25);
+      }
+      *{ box-sizing:border-box; }
+      body { margin:0; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans'; background: radial-gradient(1400px 600px at -10% -10%, #ffffff 0%, #f6f8fc 60%), radial-gradient(900px 600px at 120% 0%, #eaf1ff 0%, transparent 60%) var(--bg); color: var(--text); }
+      a { color: var(--primary); text-decoration: none; }
+      .navbar { position: sticky; top:0; z-index: 10; background: rgba(255,255,255,0.6); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0,0,0,0.06); }
+      .nav-inner { max-width: 1200px; margin: 0 auto; padding: 12px 18px; display:flex; align-items:center; justify-content: space-between; }
+      .brand { font-weight: 700; letter-spacing: .3px; color:var(--text); }
+      .container { max-width: 1200px; margin: 28px auto; padding: 0 18px; }
+      .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px; box-shadow: 0 6px 18px rgba(0,0,0,0.06); margin-bottom: 18px; }
+      .grid { display:grid; gap:16px; }
+      @media (min-width: 900px) { .grid-2 { grid-template-columns: 1fr 1fr; } }
+      table { border-collapse: collapse; width: 100%; background: var(--panel-solid); border:1px solid var(--border); border-radius: 12px; overflow: hidden; }
+      th, td { border-bottom: 1px solid var(--border); padding: 12px; text-align: left; }
+      th { background: #f1f4fb; color: var(--muted); font-weight: 600; backdrop-filter: blur(2px); }
+      tr:hover td { background: #f9fbff; }
+      pre { background: #f1f4fb; padding: 14px; border-radius: 10px; border:1px solid var(--border); color:#1a2337; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.02); }
+      .btn { padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: linear-gradient(180deg, #ffffff, #f3f6ff); cursor: pointer; color: var(--text); transition: transform .04s ease, box-shadow .08s ease, border-color .08s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+      .btn:hover { transform: translateY(-1px); border-color: var(--glow); box-shadow: 0 6px 14px rgba(47,107,255,0.18); }
+      .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-2)); border-color: transparent; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.08); box-shadow: 0 6px 18px rgba(51,92,255,0.25); }
+      .btn-danger { background: linear-gradient(135deg, #ff909c, #ff6b7d); border-color: transparent; color:#fff; box-shadow: 0 6px 18px rgba(255,122,136,0.25); }
+      .badge { padding: 3px 10px; border-radius: 999px; background: var(--chip); border:1px solid var(--border); color: var(--muted); font-size: 12px; backdrop-filter: blur(6px); }
+      .badge.ok { color: #0b3b2f; background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.35); }
+      .badge.warn { color: #3a2a00; background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.35); }
+      .badge.err { color: #3b0b18; background: rgba(217,54,68,0.15); border-color: rgba(217,54,68,0.35); }
+      .dot { display:inline-block; width:10px; height:10px; border-radius:50%; border:1px solid var(--border); vertical-align: middle; }
+      .dot-green { background:#2dd4bf; border-color:#1aa190; }
+      .dot-yellow { background:#ffd166; border-color:#e7b64a; }
+      .dot-gray { background:#4b5563; border-color:#374151; }
+      .dot-red { background:#ff7a88; border-color:#e35f6d; }
+      input, select, textarea { width: 100%; background: #fff; color: var(--text); border:1px solid var(--border); border-radius: 10px; padding: 9px; box-shadow: inset 0 1px 0 rgba(0,0,0,0.02); }
+      label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+      .row { margin-bottom: 12px; }
+      .section-title { color: #B7C3F4; text-transform: uppercase; letter-spacing: .16em; font-size: 11px; margin: 4px 0 12px; opacity: .9; }
+      .chips { display:flex; gap:6px; flex-wrap: wrap; }
+      .page-title { display:flex; align-items:center; justify-content: space-between; gap:12px; margin: 6px 0 16px; }
+      .page-title h2 { margin:0; font-size: 22px; line-height: 28px; letter-spacing:.2px; color:var(--text); }
+
+      /* Grouping & stat cards */
+      .group { display:grid; gap:14px; }
+      .group-title { font-size:12px; color:var(--muted); letter-spacing:.12em; text-transform:uppercase; margin:4px 0 4px; }
+      .stat-grid { display:grid; gap:12px; grid-template-columns: repeat(2, 1fr); }
+      @media (min-width: 900px) { .stat-grid { grid-template-columns: repeat(4, 1fr); } }
+      .stat-card { background: var(--panel-solid); border:1px solid var(--border); border-radius:12px; padding:12px; box-shadow: 0 2px 10px rgba(0,0,0,0.04); position:relative; overflow:hidden; }
+      .stat-label { color:var(--muted); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+      .stat-value { font-size:18px; font-weight:600; margin-top:6px; color:var(--text); }
+      .spark { position:absolute; right:-10px; bottom:-10px; width:120px; height:60px; background: radial-gradient(60px 30px at 50% 50%, rgba(47,107,255,0.12), transparent 60%), linear-gradient(90deg, rgba(47,107,255,0.08) 25%, transparent 25%, transparent 50%, rgba(47,107,255,0.08) 50%, rgba(47,107,255,0.08) 75%, transparent 75%); background-size: 8px 100%, 24px 100%; border-radius:12px; pointer-events:none; }
+      /* Blocking overlay & modal */
+      .overlay { position: fixed; inset: 0; background: rgba(10, 16, 30, 0.45); backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; z-index: 1000; }
+      .modal { width: min(860px, 92vw); background: var(--panel-solid); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); overflow: hidden; }
+      .modal-header { display:flex; align-items:center; justify-content: space-between; padding: 12px 16px; border-bottom:1px solid var(--border); background: #f7f9ff; }
+      .modal-title { font-weight: 600; color: var(--text); }
+      .modal-body { padding: 12px 16px; max-height: 62vh; overflow: auto; }
+      .modal-actions { display:flex; gap:8px; padding: 12px 16px; border-top:1px solid var(--border); background: #fbfcff; }
+      .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; display:inline-block; vertical-align: middle; margin-right:8px; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+    </style>
+  </head>
+  <body>
+    <div class="navbar">
+      <div class="nav-inner">
+        <div class="brand" style="display:flex; align-items:center; gap:10px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="g1" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="var(--primary)"/>
+                <stop offset="100%" stop-color="var(--primary-2)"/>
+              </linearGradient>
+            </defs>
+            <path d="M12 2L21 7L21 17L12 22L3 17L3 7L12 2Z" stroke="url(#g1)" stroke-width="1.4" fill="none"/>
+            <path d="M12 6L17 9L17 15L12 18L7 15L7 9L12 6Z" fill="url(#g1)" opacity="0.25"/>
+          </svg>
+          <span>P4 Integration Admin</span>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <a class="btn" href="/admin/exec">Exec</a>
+          <a class="btn" href="/admin/submit">Submit</a>
+          <a class="btn" href="/admin/running">Running</a>
+          <a class="btn" href="/admin/done">Done</a>
+          {% set cfg = (config or {}) %}
+          {% set exec = (cfg.get('exec', {}) if cfg else {}) %}
+          {% set ssh = (exec.get('ssh', {}) if exec else {}) %}
+          <span class="badge" title="Current execution mode" style="margin-left:6px;">
+            {% if exec.get('mode') == 'ssh' %}
+              ssh {{ ssh.get('user','') }}@{{ ssh.get('host','') }}:{{ ssh.get('port',22) }}
+            {% else %}
+              local
+            {% endif %}
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="container">
+      {% block content %}{% endblock %}
+    </div>
+    <!-- Global overlay and health modal -->
+    <div id="globalOverlay" class="overlay" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-header">
+          <div class="modal-title" id="modalTitle">Testing Connection</div>
+          <button id="modalClose" class="btn" type="button" style="display:none;">Close</button>
+        </div>
+        <div class="modal-body">
+          <div id="modalStatus" style="margin-bottom:8px;">
+            <span class="spinner"></span><span>Checking P4/Workspace health...</span>
+          </div>
+          <pre id="modalOutput" style="white-space: pre-wrap; word-break: break-word;">Starting...</pre>
+        </div>
+        <div class="modal-actions">
+          <button id="modalOk" class="btn btn-primary" type="button" style="display:none;">OK</button>
+        </div>
+      </div>
+    </div>
+    <script>
+    (function(){
+      function showOverlay(){ var ov = document.getElementById('globalOverlay'); if(ov){ ov.style.display='flex'; document.body.style.pointerEvents='none'; ov.style.pointerEvents='auto'; } }
+      function hideOverlay(){ var ov = document.getElementById('globalOverlay'); if(ov){ ov.style.display='none'; document.body.style.pointerEvents=''; } }
+      function setModalState(title, html, isOk){
+        var t = document.getElementById('modalTitle'); if(t) t.textContent = title || 'Testing Connection';
+        var s = document.getElementById('modalStatus'); if(s) s.innerHTML = isOk === undefined ? '<span class="spinner"></span><span>Checking P4/Workspace health...</span>' : (isOk ? '<span class="badge ok">OK</span>' : '<span class="badge err">FAILED</span>');
+        var o = document.getElementById('modalOutput'); if(o) o.textContent = (typeof html === 'string' ? html : JSON.stringify(html||{}, null, 2));
+        var okBtn = document.getElementById('modalOk'); if(okBtn) okBtn.style.display = (isOk === true ? 'inline-block' : 'none');
+        var closeBtn = document.getElementById('modalClose'); if(closeBtn) closeBtn.style.display = (isOk !== undefined ? 'inline-block' : 'none');
+      }
+      function testConnectionWithModal(){
+        showOverlay();
+        setModalState('Testing Connection', 'Starting...', undefined);
+        return fetch('/health/p4?login=1').then(function(r){ return r.json().then(function(j){ return { ok:r.ok, data:j }; }); })
+          .then(function(res){ var data = res.data || {}; var ok = !!data.ok; setModalState(ok ? 'Connection OK' : 'Connection Failed', data, ok); return { ok: ok, data: data }; })
+          .catch(function(e){ setModalState('Connection Failed', { error: String(e) }, false); return { ok:false, data:{ error: String(e) } }; });
+      }
+      window.__openHealthModal = testConnectionWithModal;
+      var closeBtn = document.getElementById('modalClose'); if(closeBtn){ closeBtn.addEventListener('click', hideOverlay); }
+      var okBtn = document.getElementById('modalOk'); if(okBtn){ okBtn.addEventListener('click', hideOverlay); }
+      
+      // Global timestamp formatter (relative time)
+      function formatRelativeTime(seconds) {
+        if (seconds < 60) return 'just now';
+        if (seconds < 3600) return Math.floor(seconds / 60) + ' min ago';
+        if (seconds < 86400) return Math.floor(seconds / 3600) + ' hr ago';
+        if (seconds < 604800) return Math.floor(seconds / 86400) + ' days ago';
+        var date = new Date(Date.now() - seconds * 1000);
+        return date.toLocaleDateString();
+      }
+      function updateTimestamps() {
+        var now = Math.floor(Date.now() / 1000);
+        document.querySelectorAll('.ts[data-ts]').forEach(function(el) {
+          var ts = parseInt(el.getAttribute('data-ts'));
+          if (!ts || ts === 0) { el.textContent = '-'; return; }
+          var diff = now - ts;
+          el.textContent = formatRelativeTime(diff);
+          el.title = new Date(ts * 1000).toLocaleString();
+        });
+      }
+      updateTimestamps();
+      setInterval(updateTimestamps, 30000); // Update every 30 seconds
+      
+      // Global copy to clipboard helper
+      window.copyToClipboard = function(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function() {
+            // Optional: show toast notification
+          }).catch(function(err) {
+            // Fallback: use old method
+            fallbackCopy(text);
+          });
+        } else {
+          fallbackCopy(text);
+        }
+        
+        function fallbackCopy(text) {
+          var textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          try {
+            document.execCommand('copy');
+          } catch(err) {
+            console.error('Copy failed:', err);
+          }
+          document.body.removeChild(textarea);
+        }
+      };
+    })();
+    </script>
+  </body>
+</html>

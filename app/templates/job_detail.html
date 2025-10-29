@@ -1,0 +1,744 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="grid grid-2">
+  <div class="card">
+    <p>
+      <strong>ID</strong>: 
+      {% if job.readable_id %}
+      <span class="badge" style="background:#e3f2fd; color:#1565c0; font-weight:600;">{{ job.readable_id }}</span>
+      {% endif %}
+    </p>
+    <p style="font-size:11px; color:var(--muted);">
+      UUID: <code style="cursor:pointer;" onclick="copyToClipboard('{{ job.id }}')" title="Click to copy">{{ job.id }}</code>
+    </p>
+    <div style="margin: 16px 0;">
+      <div id="status-container" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 12px; border: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: all 0.3s ease;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div id="status-indicator" style="width: 12px; height: 12px; border-radius: 50%; background: #6c757d; box-shadow: 0 0 6px rgba(108,117,125,0.4); transition: all 0.3s ease;"></div>
+          <span style="font-weight: 600; color: #495057; font-size: 15px;">Status:</span>
+          <span id="status-badge" class="badge" style="font-size: 13px; padding: 4px 8px;">{{ job.status }}</span>
+          {% if job.stage %}<span id="stage-text" style="color: #6c757d; font-weight: 500; font-size: 14px;">({{ job.stage }})</span>{% else %}<span id="stage-text" style="display:none; color:#6c757d; font-weight:500; font-size:14px;"></span>{% endif %}
+        </div>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2" style="opacity: 0.7;">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12,6 12,12 16,14"/>
+          </svg>
+          <span id="current-status-time" style="color: #6c757d; font-size: 13px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace; font-weight: 500;"></span>
+        </div>
+      </div>
+    </div>
+    {% if job.stage == 'integrate' and job.pids and job.pids.integrate %}
+    <p><strong>PID</strong>: <span class="badge">integrate={{ job.pids.integrate }}</span></p>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="btn" type="button" id="btn-hb">Check Process</button>
+      <span id="hb-res" style="color: var(--muted);"></span>
+    </div>
+    {% elif job.stage == 'submit' and job.pids and job.pids.p4push %}
+    <p><strong>PID</strong>: <span class="badge">p4push={{ job.pids.p4push }}</span></p>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="btn" type="button" id="btn-hb">Check Process</button>
+      <span id="hb-res" style="color: var(--muted);"></span>
+    </div>
+{% elif job.stage in ['resolve', 'resolving'] and job.pids and (job.pids.resolve_am1 or job.pids.resolve_am2) %}
+    <p><strong>PID</strong>:
+      {% if job.pids.resolve_am1 %}<span class="badge">resolve_am1={{ job.pids.resolve_am1 }}</span>{% endif %}
+      {% if job.pids.resolve_am2 %}<span class="badge">resolve_am2={{ job.pids.resolve_am2 }}</span>{% endif %}
+    </p>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="btn" type="button" id="btn-hb">Check Process</button>
+      <span id="hb-res" style="color: var(--muted);"></span>
+    </div>
+    {% elif job.stage in ['resolve', 'resolving'] %}
+    <div style="display:flex; gap:8px; align-items:center; margin:8px 0;">
+      <span style="color: #6c757d; font-size: 14px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24"/>
+        </svg>
+        Auto-resolve running in background
+      </span>
+    </div>
+    {% endif %}
+
+    <!-- APIs panel moved to upper section -->
+    <div style="margin-top:12px;">
+      <div class="section-title">APIs</div>
+      <button class="btn" type="button" id="btn-toggle-apis">Show APIs</button>
+      <div id="api-panel" style="display:none; margin-top:10px; border:1px solid var(--border); border-radius:8px; padding:12px; background:#f9fafb;">
+        <div style="margin-bottom:6px; font-weight:600;">Quick Links</div>
+          <ul style="margin:0; padding-left:16px;">
+            <li style="margin:4px 0;"><a href="/api/jobs/{{ job.id }}" target="_blank" rel="noopener">Job</a></li>
+            <li style="margin:4px 0;"><a href="/api/jobs/{{ job.id }}/heartbeat" target="_blank" rel="noopener">Heartbeat</a></li>
+            <li style="margin:4px 0;"><a href="/api/jobs/{{ job.id }}/process_status" target="_blank" rel="noopener">Process Status</a></li>
+          </ul>
+        
+      </div>
+    </div>
+
+    <!-- Artifacts panel (collapsed) -->
+    <div style="margin-top:12px;">
+      <div class="section-title">Artifacts</div>
+      <button class="btn" type="button" id="btn-toggle-artifacts">Show Artifacts</button>
+      <div id="artifacts-panel" style="display:none; margin-top:10px; border:1px solid var(--border); border-radius:8px; padding:12px; background:#f9fafb;">
+        <div id="artifacts-list" style="font-family:monospace; font-size:12px;"></div>
+      </div>
+    </div>
+
+{% if job.payload and job.payload.trial %}
+<p><strong>Flags</strong>: <span class="badge">trial</span></p>
+{% endif %}
+<p><strong>Changelist</strong>: {{ job.changelist or '-' }}</p>
+
+{% if job.status == 'needs_resolve' %}
+<form method="post" action="/admin/jobs/{{ job.id }}/resolve" style="margin:8px 0;">
+  <input type="hidden" name="mode" value="merge" />
+  <button class="btn" type="submit">Auto Resolve & Check Conflicts</button>
+  <small style="color:#777;">Run resolve -am and check remaining conflicts.</small>
+</form>
+{% endif %}
+
+{% if job.blocked_files and job.status == 'blocked' %}
+  <h3>Blocked Files</h3>
+  <ul>
+    {% for f in job.blocked_files %}
+      <li><code>{{ f }}</code></li>
+    {% endfor %}
+  </ul>
+{% endif %}
+
+{% if job.conflicts %}
+  <div class="section-title">Conflicts ({{ job.conflicts|length }} files)</div>
+  <div style="margin:10px 0; padding:10px; border:1px solid var(--border); border-radius:8px;">
+    {% for f in job.conflicts %}
+      <div style="margin:4px 0;">
+        <code>{{ f }}</code>
+      </div>
+    {% endfor %}
+  </div>
+  
+  <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    <button class="btn" type="button" id="btn-generate-all">Generate Resolve All Command</button>
+    <button class="btn" type="button" id="btn-generate-individual">Generate Individual Commands</button>
+  </div>
+  <div id="resolve-commands" style="margin-top:10px; display:none;">
+    <div style="background:#f5f5f5; border:1px solid #ddd; border-radius:4px; padding:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div style="font-weight:bold;">Execute these commands in your workspace:</div>
+        <div style="display:flex; gap:4px;">
+          <button class="btn" type="button" id="btn-copy-commands" style="font-size:12px; padding:4px 8px;">Copy to Clipboard</button>
+          <button class="btn" type="button" id="btn-select-all" style="font-size:12px; padding:4px 8px;">Select All</button>
+        </div>
+      </div>
+      <pre id="commands-text" style="margin:0; white-space:pre-wrap; font-family:monospace; font-size:12px; cursor:text; user-select:text;"></pre>
+    </div>
+  </div>
+{% endif %}
+
+{% if job.status in ['ready_to_submit'] %}
+  <div class="section-title">Submit</div>
+  <form method="post" action="/admin/jobs/{{ job.id }}/submit">
+    <button class="btn btn-primary" type="submit">Submit Changelist</button>
+  </form>
+{% endif %}
+
+{% if job.status in ['awaiting_approval'] %}
+  <h3>Approval</h3>
+  <div style="display:flex; gap:8px; align-items:center;">
+    <form method="post" action="/admin/jobs/{{ job.id }}/approve">
+      <button class="btn btn-primary" type="submit">Approve</button>
+    </form>
+    <form method="post" action="/admin/jobs/{{ job.id }}/reject">
+      <input type="text" name="reason" placeholder="Reason (optional)" />
+      <button class="btn btn-danger" type="submit">Reject</button>
+    </form>
+  </div>
+{% endif %}
+
+  <div class="section-title">Actions</div>
+  <button class="btn btn-danger" type="button" id="btn-cancel">Cancel Job</button>
+  <button class="btn" type="button" id="btn-retry" style="margin-left:8px;">Retry</button>
+
+  
+
+  </div>
+  <div class="card">
+<script>
+(function(){
+  var jobId = "{{ job.id }}";
+  var btnCancel = document.getElementById('btn-cancel');
+  var btnRetry = document.getElementById('btn-retry');
+  var btnToggleApis = document.getElementById('btn-toggle-apis');
+  var apiPanel = document.getElementById('api-panel');
+  var btnToggleArtifacts = document.getElementById('btn-toggle-artifacts');
+  var artifactsPanel = document.getElementById('artifacts-panel');
+  var artifactsList = document.getElementById('artifacts-list');
+  
+  if(btnCancel){
+    btnCancel.addEventListener('click', function(){
+      if(!confirm('Are you sure you want to cancel this job?')) return;
+      fetch('/api/jobs/' + jobId + '/cancel', {method:'POST'})
+        .then(r => r.json())
+        .then(function(res){ location.reload(); })
+        .catch(function(_){ alert('Cancel failed'); });
+    });
+  }
+  
+  if(btnRetry){
+    btnRetry.addEventListener('click', function(){
+      if(!confirm('Retry will kill current job, clean workspace, and spawn new isolated process. Continue?')) return;
+      
+      btnRetry.disabled = true;
+      btnRetry.textContent = 'Retrying...';
+      
+      fetch('/api/jobs/' + jobId + '/retry?mode=process', {method:'POST'})
+        .then(function(r) {
+          if(!r.ok) {
+            return r.json().then(function(errorData) {
+              throw new Error(errorData.error || 'HTTP ' + r.status);
+            });
+          }
+          return r.json();
+        })
+        .then(function(res){ 
+          if(res && res.ok){ 
+            var msg = res.message || 'Job queued for retry successfully';
+            if(res.mode === 'subprocess' && res.pid) {
+              msg += '\\n\\nNew subprocess PID: ' + res.pid;
+            }
+            alert(msg);
+            location.reload(); 
+          } else { 
+            alert(res && res.error ? res.error : 'Retry failed'); 
+            btnRetry.disabled = false;
+            btnRetry.textContent = 'Retry';
+          } 
+        })
+        .catch(function(err){ 
+          console.error('Retry error:', err);
+          alert('Retry failed: ' + (err.message || 'Unknown error'));
+          btnRetry.disabled = false;
+          btnRetry.textContent = 'Retry';
+        });
+    });
+  }
+
+  if(btnToggleApis && apiPanel){
+    btnToggleApis.addEventListener('click', function(){
+      apiPanel.style.display = (apiPanel.style.display === 'none' || !apiPanel.style.display) ? 'block' : 'none';
+      btnToggleApis.textContent = (apiPanel.style.display === 'block') ? 'Hide APIs' : 'Show APIs';
+    });
+  }
+  if(btnToggleArtifacts && artifactsPanel && artifactsList){
+    btnToggleArtifacts.addEventListener('click', function(){
+      var willShow = (artifactsPanel.style.display === 'none' || !artifactsPanel.style.display);
+      artifactsPanel.style.display = willShow ? 'block' : 'none';
+      btnToggleArtifacts.textContent = willShow ? 'Hide Artifacts' : 'Show Artifacts';
+      if(willShow && !artifactsList.getAttribute('data-loaded')){
+        fetch('/api/jobs/' + jobId + '/artifacts').then(r=>r.json()).then(function(res){
+          var items = (res && res.artifacts) ? res.artifacts : [];
+          if(!items.length){ artifactsList.innerHTML = '<small>No artifacts</small>'; artifactsList.setAttribute('data-loaded','1'); return; }
+          var html = '<ul style="margin:0; padding-left:16px;">' + items.map(function(name){
+            var u = '/api/jobs/' + jobId + '/artifacts/' + encodeURIComponent(name);
+            return '<li style="margin:4px 0;"><a href="' + u + '" target="_blank" rel="noopener">' + name + '</a></li>';
+          }).join('') + '</ul>';
+          artifactsList.innerHTML = html;
+          artifactsList.setAttribute('data-loaded','1');
+        }).catch(function(_){ artifactsList.innerHTML = '<small style="color:red;">Failed to load artifacts</small>'; artifactsList.setAttribute('data-loaded','1'); });
+      }
+    });
+  }
+  
+  // Generate resolve commands
+  var btnGenerateAll = document.getElementById('btn-generate-all');
+  var btnGenerateIndividual = document.getElementById('btn-generate-individual');
+  var btnCopy = document.getElementById('btn-copy-commands');
+  var btnSelectAll = document.getElementById('btn-select-all');
+  var commandsDiv = document.getElementById('resolve-commands');
+  var commandsText = document.getElementById('commands-text');
+  var generatedCommands = '';
+  
+  function generateCommands(useWildcard) {
+    fetch('/api/jobs/' + jobId)
+      .then(r => r.json())
+      .then(function(job){
+        if(!job || !job.conflicts || !job.conflicts.length){
+          alert('No conflicts found');
+          return;
+        }
+        
+        var wsRoot = '{{ job.workspace_root or "/local_vol1_nobackup/nanyang/orion" }}';
+        var client = '{{ job.client or "nanyang2_srdc_srdcws990_mkwa_local_vol1_nobackup_nanyang_orion" }}';
+        
+        var commands = ['cd ' + wsRoot];
+        
+        if(useWildcard) {
+          // Use wildcard to resolve all conflicts at once
+          commands.push('p4 -c ' + client + ' resolve ...');
+        } else {
+          // Generate individual commands for each file
+          job.conflicts.forEach(function(file){
+            commands.push('p4 -c ' + client + ' resolve ' + file);
+          });
+        }
+        
+        generatedCommands = commands.join('\n');
+        commandsText.textContent = generatedCommands;
+        commandsDiv.style.display = 'block';
+      })
+      .catch(function(){ alert('Failed to get job details'); });
+  }
+  
+  if(btnGenerateAll){
+    btnGenerateAll.addEventListener('click', function(){
+      generateCommands(true);
+    });
+  }
+  
+  if(btnGenerateIndividual){
+    btnGenerateIndividual.addEventListener('click', function(){
+      generateCommands(false);
+    });
+  }
+  
+  if(btnCopy){
+    btnCopy.addEventListener('click', function(){
+      if(!generatedCommands){
+        alert('No commands to copy');
+        return;
+      }
+      
+      // Try multiple methods to copy to clipboard
+      var copySuccess = false;
+      
+      // Method 1: Modern clipboard API (requires HTTPS or localhost)
+      if(navigator.clipboard && window.isSecureContext){
+        navigator.clipboard.writeText(generatedCommands)
+          .then(function(){
+            btnCopy.textContent = 'Copied!';
+            setTimeout(function(){
+              btnCopy.textContent = 'Copy to Clipboard';
+            }, 2000);
+            copySuccess = true;
+          })
+          .catch(function(){
+            tryFallbackCopy();
+          });
+      } else {
+        tryFallbackCopy();
+      }
+      
+      function tryFallbackCopy(){
+        // Method 2: Create temporary textarea and copy
+        var textarea = document.createElement('textarea');
+        textarea.value = generatedCommands;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        
+        try {
+          textarea.focus();
+          textarea.select();
+          textarea.setSelectionRange(0, 99999); // For mobile devices
+          
+          // Try execCommand
+          var success = document.execCommand('copy');
+          if(success){
+            btnCopy.textContent = 'Copied!';
+            setTimeout(function(){
+              btnCopy.textContent = 'Copy to Clipboard';
+            }, 2000);
+            copySuccess = true;
+          }
+        } catch(err) {
+          console.log('execCommand failed:', err);
+        }
+        
+        document.body.removeChild(textarea);
+        
+        // Method 3: If all else fails, select the text and show instruction
+        if(!copySuccess){
+          var range = document.createRange();
+          range.selectNode(commandsText);
+          window.getSelection().removeAllRanges();
+          window.getSelection().addRange(range);
+          
+          // Create a more helpful message
+          var instructions = 'Auto-copy failed. The commands are now selected.\\n\\n';
+          instructions += 'Please press Ctrl+C (or Cmd+C on Mac) to copy the commands.\\n\\n';
+          instructions += 'Commands to copy:\\n' + generatedCommands;
+          
+          alert(instructions);
+        }
+      }
+    });
+  }
+  
+  // Select All button functionality
+  if(btnSelectAll){
+    btnSelectAll.addEventListener('click', function(){
+      if(!generatedCommands){
+        alert('No commands to select');
+        return;
+      }
+      
+      // Select all text in the pre element
+      var range = document.createRange();
+      range.selectNodeContents(commandsText);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      
+      // Show helpful message
+      btnSelectAll.textContent = 'Selected!';
+      setTimeout(function(){
+        btnSelectAll.textContent = 'Select All';
+      }, 2000);
+      
+      // Show instruction
+      setTimeout(function(){
+        alert('Commands selected! Press Ctrl+C (or Cmd+C on Mac) to copy.');
+      }, 100);
+    });
+  }
+  
+  // (artifacts loaded on demand when toggled)
+})();
+</script>
+<script>
+(function(){
+  var jobId = "{{ job.id }}";
+  var statusBadge = document.getElementById('status-badge');
+  var stageText = document.getElementById('stage-text');
+  var currentStatus = "{{ job.status }}";
+  function setStatus(newStatus){
+    if(!newStatus) return;
+    currentStatus = newStatus;
+    if(statusBadge) statusBadge.textContent = newStatus;
+    try { updateStatusIndicator(); } catch(e){}
+  }
+  function setStage(newStage){
+    if(!stageText) return;
+    if(newStage){ stageText.style.display=''; stageText.textContent = '(' + newStage + ')'; }
+    else { stageText.style.display='none'; stageText.textContent=''; }
+  }
+  // Try SSE first
+  var usePolling = false;
+  try{
+    if(window.EventSource){
+      var es = new EventSource('/api/stream?job_id=' + encodeURIComponent(jobId));
+      es.onmessage = function(ev){
+        try{
+          var data = ev && ev.data ? JSON.parse(ev.data) : null;
+          if(!data) return;
+          if(data.status) setStatus(String(data.status));
+          if(data.stage) setStage(String(data.stage));
+        }catch(e){}
+      };
+      es.onerror = function(){ try{ es.close(); }catch(_){} usePolling = true; };
+      // Fallback to polling after a short delay if no events arrive
+      setTimeout(function(){ if(!statusBadge.getAttribute('data-seen')) usePolling = true; }, 3000);
+    } else { usePolling = true; }
+  }catch(e){ usePolling = true; }
+
+  // Polling fallback
+  function poll(){
+    fetch('/api/jobs/' + jobId)
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ if(!j) return; if(j.status) setStatus(String(j.status)); if(j.stage) setStage(String(j.stage)); })
+      .catch(function(_){});
+  }
+  if(usePolling){ setInterval(poll, 5000); poll(); }
+})();
+</script>
+<script>
+(function(){
+  var jobId = "{{ job.id }}";
+  function renderHB(data){
+    var el = document.getElementById('hb-res'); if(!el) return;
+    if(!data || data.error){ el.textContent = data && data.error ? ('Error: '+data.error) : 'No data'; return; }
+    var a = data.alive || {}; var p = data.pids || {};
+    var stage = "{{ job.stage or '' }}";
+    var text = '';
+    
+    // Check all possible stages with PIDs
+    var stageMap = {
+      'sync': 'pre',
+      'pre_submit_checks': 'name_check', 
+      'integrate': 'integrate',
+      'resolve': 'resolve',
+      'resolving': 'resolve',
+      'submit': ['shelve', 'reshelve', 'p4push']  // submit stage can have multiple PIDs
+    };
+    
+    var stageKeys = stageMap[stage];
+    if(stageKeys) {
+      if(Array.isArray(stageKeys)) {
+        // Handle multiple possible PIDs for submit stage
+        for(var i = 0; i < stageKeys.length; i++) {
+          var key = stageKeys[i];
+          if(p[key]) {
+            text = key + ':' + (a[key] ? 'alive' : 'dead') + ' (PID ' + p[key] + ')';
+            break; // Show the first active PID found
+          }
+        }
+      } else {
+        // Handle single PID stages
+        if(p[stageKeys]) {
+          text = stageKeys + ':' + (a[stageKeys] ? 'alive' : 'dead') + ' (PID ' + p[stageKeys] + ')';
+        }
+      }
+    }
+    
+    el.textContent = text;
+  }
+  function ping(){ fetch('/api/jobs/' + jobId + '/heartbeat').then(r=>r.json()).then(renderHB).catch(function(_){}); }
+  var btn = document.getElementById('btn-hb'); if(btn){ btn.addEventListener('click', ping); }
+  var stage = "{{ job.stage or '' }}";
+  if(stage && ['running','integrate','resolve','resolving','submit','sync','pre_submit_checks'].indexOf(stage)>=0){ setInterval(ping, 10000); ping(); }
+})();
+</script>
+
+
+<div class="section-title">Process Monitor</div>
+<div id="process-monitor"></div>
+<script>
+// Enhanced status display with dynamic indicator
+(function(){
+  var jobId = "{{ job.id }}";
+  var currentStatus = "{{ job.status }}";
+  var currentStage = "{{ job.stage or '' }}";
+  
+  function updateStatusIndicator() {
+    var indicator = document.getElementById('status-indicator');
+    var container = document.getElementById('status-container');
+    if(!indicator || !container) return;
+    
+    // Define status colors and animations
+    var statusConfig = {
+      // Success/active states → green
+      'submitted': { color: '#28a745', bgColor: '#d4edda', animation: 'steady' },
+      'running': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
+      'sync': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
+      'integrate': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
+      'resolving': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
+      'resolve': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
+      'needs_resolve': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
+      'pre_submit_checks': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
+      'submit': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
+      'ready_to_submit': { color: '#28a745', bgColor: '#d4edda', animation: 'steady' },
+      // Neutral/waiting states → gray
+      'pending': { color: '#6c757d', bgColor: '#f8f9fa', animation: 'blink' },
+      'queued': { color: '#6c757d', bgColor: '#f8f9fa', animation: 'steady' },
+      // Attention/problem states
+      'blocked': { color: '#fd7e14', bgColor: '#ffe8d1', animation: 'blink' },
+      'error': { color: '#dc3545', bgColor: '#f8d7da', animation: 'steady' },
+      'cancelled': { color: '#6c757d', bgColor: '#f8f9fa', animation: 'steady' }
+    };
+    
+    var config = statusConfig[currentStatus] || { color: '#6c757d', bgColor: '#f8f9fa', animation: 'steady' };
+    
+    // Apply colors
+    indicator.style.background = config.color;
+    indicator.style.boxShadow = '0 0 8px ' + config.color + '40';
+    container.style.background = 'linear-gradient(135deg, ' + config.bgColor + ' 0%, #f8f9fa 100%)';
+    
+    // Apply animation
+    indicator.className = 'status-indicator-' + config.animation;
+  }
+  
+  function loadCurrentStatusTime(){
+    fetch('/api/jobs/' + jobId + '/events').then(r => r.json()).then(function(res){
+      var el = document.getElementById('current-status-time');
+      if(!el) return;
+      
+      var events = (res && res.events) ? res.events : [];
+      if(!events.length) {
+        el.textContent = 'No timestamp';
+        return;
+      }
+      
+      // Find the most recent status or stage event
+      var statusEvents = events.filter(function(e){
+        return e.event === 'status' || e.event === 'stage';
+      }).sort(function(a,b){ 
+        var aTime = new Date(a.ts_iso || 0).getTime();
+        var bTime = new Date(b.ts_iso || 0).getTime();
+        return bTime - aTime; // Most recent first
+      });
+      
+      if(statusEvents.length > 0) {
+        var latestEvent = statusEvents[0];
+        if(latestEvent.ts_iso) {
+          var date = new Date(latestEvent.ts_iso);
+          el.textContent = date.toLocaleString();
+        } else {
+          el.textContent = 'No timestamp';
+        }
+      } else {
+        el.textContent = 'No events';
+      }
+    }).catch(function(_){ 
+      var el = document.getElementById('current-status-time');
+      if(el) el.textContent = 'Load failed';
+    });
+  }
+  
+  // Add CSS animations
+  var style = document.createElement('style');
+  style.textContent = `
+    .status-indicator-pulse {
+      animation: statusPulse 2s ease-in-out infinite;
+    }
+    .status-indicator-blink {
+      animation: statusBlink 1.5s linear infinite;
+    }
+    .status-indicator-steady {
+      animation: none;
+    }
+    @keyframes statusPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(1.1); }
+    }
+    @keyframes statusBlink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0.4; }
+    }
+  `;
+  document.head.appendChild(style);
+  
+  // Initialize
+  updateStatusIndicator();
+  loadCurrentStatusTime();
+  
+  // Auto-refresh status time every 30 seconds for active jobs
+  if(currentStatus && ['pending','queued','running','needs_resolve','ready_to_submit'].indexOf(currentStatus) >= 0){
+    setInterval(function() {
+      loadCurrentStatusTime();
+      updateStatusIndicator(); // Re-apply indicator styles in case of dynamic updates
+    }, 30000);
+  }
+})();
+
+// Process Monitor
+(function(){
+  var jobId = "{{ job.id }}";
+  function loadProcessStatus(){
+    fetch('/api/jobs/' + jobId + '/process_status')
+      .then(r => r.json())
+      .then(function(data){
+        var el = document.getElementById('process-monitor');
+        if(!el) return;
+        
+        // Filter out terminated/finished processes
+        var activeProcesses = data.processes ? data.processes.filter(function(proc){
+          return proc.status !== 'not_found' && proc.is_active;
+        }) : [];
+        
+        if(activeProcesses.length === 0){
+          el.innerHTML = '<small style="color:#777;">No active processes</small>';
+          return;
+        }
+        
+        var html = '<div style="font-family:monospace; font-size:12px;">';
+        
+        // P4 Connection Status
+        var connStatus = data.p4_connection === 'ok' ? 
+          '<span style="color:green;">✅ Connected</span>' : 
+          '<span style="color:red;">❌ Failed</span>';
+        html += '<div style="margin-bottom:8px;"><strong>P4 Connection:</strong> ' + connStatus + '</div>';
+        
+        // Process List - only active processes
+        activeProcesses.forEach(function(proc){
+          var statusColor = proc.is_active ? 'green' : 
+                           proc.status === 'not_found' ? 'red' : 'orange';
+          var statusIcon = proc.is_active ? '🟢' : 
+                          proc.status === 'not_found' ? '🔴' : '🟡';
+          
+          html += '<div style="margin:4px 0; padding:8px; background:#f8f8f8; border-radius:6px; border-left:4px solid ' + statusColor + ';">';
+          
+          // Header row with stage and status
+          html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">';
+          html += '<div>';
+          html += '<strong style="font-size:14px;">' + proc.stage + '</strong> ';
+          html += '<span style="color:gray; font-size:12px;">(PID: ' + proc.pid + ')</span>';
+          html += '</div>';
+          html += '<div>';
+          html += '<span style="color:' + statusColor + '; font-weight:bold;">' + statusIcon + ' ' + (proc.is_active ? 'Active' : 'Inactive') + '</span>';
+          html += '</div>';
+          html += '</div>';
+          
+          // Metrics row
+          html += '<div style="display:flex; gap:12px; align-items:center; font-size:12px;">';
+          var cpuColor = proc.cpu_percent > 50 ? '#e74c3c' : proc.cpu_percent > 20 ? '#f39c12' : '#2ecc71';
+          var memColor = proc.memory_percent > 10 ? '#e74c3c' : proc.memory_percent > 5 ? '#f39c12' : '#2ecc71';
+          html += '<span style="color:' + cpuColor + ';"><strong>CPU: ' + proc.cpu_percent.toFixed(1) + '%</strong></span>';
+          html += '<span style="color:' + memColor + ';"><strong>MEM: ' + proc.memory_percent.toFixed(1) + '%</strong></span>';
+          html += '<span style="color:#666;"><strong>Runtime: ' + proc.runtime + '</strong></span>';
+          html += '</div>';
+          
+          // Details row (wchan and status)
+          html += '<div style="display:flex; gap:8px; align-items:center; font-size:11px; color:#777; margin-top:2px;">';
+          html += '<span>State: ' + proc.status + '</span>';
+          if(proc.wchan && proc.wchan !== '-' && proc.wchan !== 'unknown') {
+            html += '<span>Waiting: ' + proc.wchan + '</span>';
+          }
+          html += '</div>';
+          
+          html += '</div>';
+        });
+        
+        html += '</div>';
+        
+        el.innerHTML = html;
+      })
+      .catch(function(err){
+        var el = document.getElementById('process-monitor');
+        if(el) el.innerHTML = '<small style="color:red;">Failed to load process status: ' + err.message + '</small>';
+      });
+  }
+  
+  // Load initial status
+  loadProcessStatus();
+  
+  // Auto-refresh every 10 seconds for active jobs
+  var jobStatus = "{{ job.status }}";
+  if(jobStatus && ['pending','queued','running','needs_resolve','ready_to_submit','resolving'].indexOf(jobStatus) >= 0){
+    setInterval(loadProcessStatus, 10000);
+  }
+})();
+</script>
+
+<div class="section-title">Log</div>
+<pre>
+{% for line in job.log %}
+{{ line }}
+{% endfor %}
+</pre>
+<script>
+  (function(){
+    // Auto-poll check_log_json when in resolve/resolving
+    var stage = "{{ job.stage or '' }}";
+    var jobId = "{{ job.id }}";
+    function poll(){
+      fetch('/admin/jobs/' + jobId + '/check_log_json')
+        .then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function(j){
+          if(j && (j.stage === 'submit' || j.stage === 'blocked' || j.status === 'ready_to_submit')){
+            location.reload();
+            return;
+          }
+        })
+        .catch(function(_){ /* ignore */ })
+        .finally(function(){ setTimeout(poll, 5000); });
+    }
+    if(stage === 'resolve' || stage === 'resolving'){
+      setTimeout(poll, 3000);
+    }
+    // Existing slow auto-refresh
+    setTimeout(function(){ location.reload(); }, 30000);
+  })();
+</script>
+  </div>
+</div>
+{% endblock %}
