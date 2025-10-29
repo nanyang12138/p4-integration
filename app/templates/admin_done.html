@@ -29,7 +29,7 @@
         <td>{{ job.changelist or '-' }}</td>
         <td>{{ job.conflicts|length }}</td>
         <td><span class="ts" data-ts="{{ job.updated_at or 0 }}"></span></td>
-        <td><a href="/admin/jobs/{{ job.id }}{% if is_admin %}?token={{ config.get('admin',{}).get('token','') }}{% endif %}">Detail</a></td>
+        <td><a href="/admin/jobs/{{ job.id }}">Detail</a></td>
       </tr>
       {% endfor %}
     </tbody>

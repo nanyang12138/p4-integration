@@ -395,9 +395,6 @@ done
         try:
             redacted = s or ""
             secrets: List[str] = []
-            admin = self._config.get("admin", {}) if isinstance(self._config.get("admin", {}), dict) else {}
-            if isinstance(admin, dict) and admin.get("token"):
-                secrets.append(str(admin.get("token")))
             if self._config.get("p4w_password"):
                 secrets.append(str(self._config.get("p4w_password")))
             p4cfg = self._config.get("p4", {}) if isinstance(self._config.get("p4", {}), dict) else {}

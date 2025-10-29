@@ -15,7 +15,6 @@
       <td>
         {% if is_admin %}
         <form method="post" action="/api/specs/{{ name }}/delete" onsubmit="return confirm('Delete spec {{ name }}?');">
-          <input type="hidden" name="token" value="{{ config.get('admin',{}).get('token','') if config else '' }}" />
           <button class="btn btn-danger" type="submit">Delete</button>
         </form>
         {% endif %}
@@ -44,7 +43,7 @@ async function addSpec(ev){
     target: f.target.value.trim(),
     description: f.description.value.trim()
   };
-  const resp = await fetch('/api/specs', {method:'POST', headers:{'Content-Type':'application/json','X-Admin-Token':'{{ config.get('admin',{}).get('token','') if config else '' }}'}, body: JSON.stringify(body)});
+  const resp = await fetch('/api/specs', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   if(resp.ok){ location.reload(); } else { alert('Add failed'); }
 }
 </script>

@@ -23,7 +23,7 @@ def register_routes(app: Flask, jobs: JobManager) -> None:
     @app.after_request
     def after_request(response):
         response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Admin-Token')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
         response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
         return response
     
@@ -386,7 +386,7 @@ def register_routes(app: Flask, jobs: JobManager) -> None:
     @app.get("/admin")
     def admin_list():
         # Redirect to running page as default dashboard
-        return redirect("/admin/running" + ("?token=" + str(app.config.get("APP_CONFIG", {}).get("admin", {}).get("token")) if request.args.get("token") else ""))
+        return redirect("/admin/running")
 
     # Accept trailing slash for convenience
     @app.get("/admin/")
@@ -396,9 +396,7 @@ def register_routes(app: Flask, jobs: JobManager) -> None:
     @app.get("/admin/jobs/create")
     def admin_create_job_get():
         # Redirect direct GET visits to the Submit form page
-        provided = request.headers.get("X-Admin-Token") or request.args.get("token") or request.form.get("token")
-        token_q = ("?token=" + str(provided)) if provided else ""
-        return redirect("/admin/submit" + token_q)
+        return redirect("/admin/submit")
 
     @app.post("/admin/jobs/create")
     def admin_create_job():
@@ -797,17 +795,12 @@ def register_routes(app: Flask, jobs: JobManager) -> None:
         file_path = request.args.get("file")
         if not file_path:
             abort(400)
-        job = jobs.get_job(job_id)
-        if not job:
-            abort(404)
+        job = get_job_or_404(job_id)
         if file_path not in (job.get("conflicts") or []):
             return jsonify({"error": "file not in current conflicts"}), 400
         ws = jobs._p4.workspace_root  # type: ignore[attr-defined]
-        cfg = app.config.get("APP_CONFIG", {})
-        merge_bin = None
-        if isinstance(cfg.get("p4", {}), dict):
-            merge_bin = cfg.get("p4", {}).get("merge_bin")  # type: ignore[assignment]
-        merge_bin = merge_bin or "/tool/pandora64/bin/p4merge"
+        # Use default p4merge path
+        merge_bin = "/tool/pandora64/bin/p4merge"
         # Build one-liner the user can run in their Linux GUI session
         cmd = (
             f"cd {ws}; "

@@ -30,6 +30,9 @@ All notable changes to P4 Integration Service.
 - 🗑️ Removed decorative stat cards that showed no data
 - 🗑️ Removed "Unknown" filter option from Running page
 - 🗑️ Removed ~60 lines of duplicated environment initialization code
+- 🗑️ Removed ADMIN_TOKEN (no actual authentication logic, only misleading)
+- 🗑️ Removed notifications config (feature already removed from code)
+- 🗑️ Removed p4.merge_bin config (hardcoded default is sufficient)
 
 ### Fixed
 - 🐛 Storage deadlock risk (refactored internal `_write()` method)

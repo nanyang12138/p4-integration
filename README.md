@@ -33,7 +33,6 @@ A lightweight Flask service to orchestrate Perforce (p4) integration, conflict r
 3. **Security**: Set passwords via environment variables (never commit passwords to config.yaml):
    ```bash
    export P4PASSWD=your_p4_password
-   export ADMIN_TOKEN=your_admin_token
    export P4_INTEG_SSH_PASSWORD=your_ssh_password  # if using SSH mode
    ```
 4. `pip install -r requirements.txt`

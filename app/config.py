@@ -22,9 +22,6 @@ def load_config() -> Dict[str, Any]:
     p4.setdefault("client", os.environ.get("P4CLIENT", ""))
     p4.setdefault("password", os.environ.get("P4PASSWD", ""))
 
-    admin = config.setdefault("admin", {})
-    admin.setdefault("token", os.environ.get("ADMIN_TOKEN", "changeme"))
-
     config.setdefault("workspace_root", os.environ.get("P4_INTEG_WORKSPACE_ROOT", os.path.abspath("ws")))
     config.setdefault("blocklist", [])  # list of glob patterns or exact depot paths
     config.setdefault("test_hook", {"command": "", "args": []})
@@ -94,13 +91,10 @@ def validate_config(config: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str], 
     if not isinstance(config.get("p4", {}), dict):
         errors.append("p4 section must be a mapping")
         config["p4"] = {}
-    if not isinstance(config.get("admin", {}), dict):
-        warnings.append("admin section should be a mapping; using defaults")
-        config["admin"] = {}
 
     p4 = config.get("p4", {})
     if isinstance(p4, dict):
-        for key in ["port", "user", "client", "password", "bin", "merge_bin"]:
+        for key in ["port", "user", "client", "password", "bin"]:
             if key in p4 and p4[key] is not None and not isinstance(p4[key], str):
                 try:
                     p4[key] = str(p4[key])

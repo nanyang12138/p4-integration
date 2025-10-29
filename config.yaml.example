@@ -4,10 +4,6 @@ p4:
   client: your_client_name
   password: ''  # SECURITY: Set via environment variable P4PASSWD
   bin: p4  # or /path/to/p4
-  merge_bin: p4merge  # or /path/to/p4merge
-
-admin:
-  token: changeme  # SECURITY: Set via environment variable ADMIN_TOKEN
 
 workspace_root: /path/to/workspace
 
@@ -44,9 +40,6 @@ specs:
 
 submit:
   trial: false  # Set to true for trial mode by default
-
-notifications:
-  enabled: false
 
 features:
   advanced_ui: true
