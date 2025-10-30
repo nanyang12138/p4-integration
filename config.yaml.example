@@ -71,6 +71,7 @@ env_init:
 # The auto-resolve thread checks jobs in needs_resolve status and auto-continues
 # to submit when conflicts are cleared (will not interfere with manual operations)
 auto_resolve:
-  enabled: true  # Enable automatic resolve checking
-  interval: 60   # Check interval in seconds
+  enabled: true   # Enable automatic resolve checking
+  interval: 60    # Check interval in seconds
+  auto_submit: true  # Auto-submit when conflicts are cleared (both auto-resolve and manual rescan)
 

@@ -62,11 +62,12 @@ class JobManager:
         auto_resolve_cfg = self._config.get("auto_resolve", {})
         self._auto_resolve_enabled = auto_resolve_cfg.get("enabled", True) if isinstance(auto_resolve_cfg, dict) else True
         self._auto_resolve_interval = auto_resolve_cfg.get("interval", 60) if isinstance(auto_resolve_cfg, dict) else 60
+        self._auto_resolve_auto_submit = auto_resolve_cfg.get("auto_submit", True) if isinstance(auto_resolve_cfg, dict) else True
         
         if self._auto_resolve_enabled:
             self._refresher_thread = threading.Thread(target=self._resolve_refresher_loop, daemon=True)
             self._refresher_thread.start()
-            self._logger.info(f"Auto-resolve refresher started (interval: {self._auto_resolve_interval}s)")
+            self._logger.info(f"Auto-resolve refresher started (interval: {self._auto_resolve_interval}s, auto_submit: {self._auto_resolve_auto_submit})")
         else:
             self._refresher_thread = None
             self._logger.info("Auto-resolve refresher disabled")
@@ -486,12 +487,20 @@ done
             conflicts, _ = self._get_conflicts_with_cache(job_id)
             
             if not conflicts:  # No conflicts found, can proceed
-                self._append_log(job, "Auto-check: conflicts cleared, automatically continuing to submit")
-                self._logger.info(f"Job {job_id}: conflicts cleared by auto-check, triggering continue_to_submit")
                 # Clear cache when continuing
                 self._conflict_cache.pop(job_id, None)
-                # Call new continue_to_submit API instead of rescan_conflicts
-                self._continue_to_submit(job)
+                
+                if self._auto_resolve_auto_submit:
+                    self._append_log(job, "Auto-check: conflicts cleared, automatically continuing to submit")
+                    self._logger.info(f"Job {job_id}: conflicts cleared by auto-check, triggering continue_to_submit (auto_submit=true)")
+                    # Call new continue_to_submit API instead of rescan_conflicts
+                    self._continue_to_submit(job)
+                else:
+                    self._append_log(job, "Auto-check: conflicts cleared. Ready to submit (manual confirmation required)")
+                    self._logger.info(f"Job {job_id}: conflicts cleared by auto-check, waiting for manual submission (auto_submit=false)")
+                    job["status"] = "ready_to_submit"
+                    self._set_stage(job, "ready_to_submit")
+                    self._save(job)
             else:
                 self._logger.debug(f"Job {job_id}: still has {len(conflicts)} conflicts")
         except Exception as e:
@@ -1252,38 +1261,6 @@ done
         path = rel_or_abs_path if rel_or_abs_path.startswith("/") else os.path.join(self._p4.workspace_root, rel_or_abs_path)
         return self._p4.read_file_text(path)
 
-    def admin_submit(self, job_id: str) -> Job:
-        job = self.get_job(job_id)
-        if not job:
-            raise ValueError("job not found")
-        # If job is awaiting_approval, flip to proceed
-        if str(job.get("status")) == "awaiting_approval":
-            job["status"] = "ready_to_submit"
-            self._append_log(job, "Approval granted by admin")
-            self._save(job)
-        
-        if not self._pre_submit_checks(job):
-            job["status"] = "blocked"
-            self._save(job)
-            return job
-        # Direct submit (alternative to p4push flow)
-        try:
-            if job.get("changelist"):
-                out, err = self._p4.submit(int(job["changelist"]))
-            else:
-                out, err = self._p4.submit_default(job.get("payload", {}).get("description", "Submit"))
-            self._append_log(job, f"Submit output: {out}")
-            if err:
-                self._append_log(job, f"Submit stderr: {err}")
-        except Exception as e:
-            self._append_log(job, f"Submit failed: {e}")
-            job["status"] = "error"
-            self._save(job)
-            return job
-        job["status"] = "pushed"
-        self._save(job)
-        return job
-
     def cancel_job(self, job_id: str) -> Job:
         lock = self._get_job_lock(job_id)
         with lock:
@@ -1486,17 +1463,23 @@ done
                     self._persist_log_artifacts(job, "conflicts", "\n".join(job["conflicts"]))
                 except Exception:
                     pass
-                # Update status/stage - MANUAL ONLY, no auto-submit
+                # Update status/stage - behavior controlled by auto_submit config
                 if job["conflicts"]:
                     job["status"] = "needs_resolve"
                     self._set_stage(job, "resolve")
                     self._save(job)
                 else:
-                    # Conflicts cleared but DO NOT auto-submit in manual flow
-                    job["status"] = "ready_to_submit"
-                    self._set_stage(job, "ready_to_submit")
-                    self._append_log(job, "Conflicts cleared. Ready to submit. Use continue_to_submit API or submit button.")
-                    self._save(job)
+                    # Conflicts cleared - check auto_submit config
+                    if self._auto_resolve_auto_submit:
+                        self._append_log(job, "Manual rescan: conflicts cleared, automatically continuing to submit (auto_submit=true)")
+                        self._logger.info(f"Job {job_id}: manual rescan cleared conflicts, triggering continue_to_submit")
+                        self._continue_to_submit(job)
+                    else:
+                        job["status"] = "ready_to_submit"
+                        self._set_stage(job, "ready_to_submit")
+                        self._append_log(job, "Manual rescan: conflicts cleared. Ready to submit (manual confirmation required, auto_submit=false)")
+                        self._logger.info(f"Job {job_id}: manual rescan cleared conflicts, waiting for manual submission")
+                        self._save(job)
                 return job
             except Exception as e:  # noqa: BLE001
                 # Fallback: mark as error and return

@@ -137,8 +137,11 @@
 
 {% if job.status in ['ready_to_submit'] %}
   <div class="section-title">Submit</div>
-  <form method="post" action="/admin/jobs/{{ job.id }}/submit">
+  <form id="form-continue-submit">
     <button class="btn btn-primary" type="submit">Submit Changelist</button>
+    <p style="margin-top:8px; font-size:13px; color:#6c757d;">
+      Will shelve changelist and push via p4push (complete workflow)
+    </p>
   </form>
 {% endif %}
 
@@ -219,6 +222,38 @@
           alert('Retry failed: ' + (err.message || 'Unknown error'));
           btnRetry.disabled = false;
           btnRetry.textContent = 'Retry';
+        });
+    });
+  }
+  
+  // Handle continue_to_submit form
+  var formContinueSubmit = document.getElementById('form-continue-submit');
+  if(formContinueSubmit){
+    formContinueSubmit.addEventListener('submit', function(e){
+      e.preventDefault();
+      if(!confirm('Continue to submit? This will shelve the changelist and push via p4push.')) return;
+      
+      var btn = formContinueSubmit.querySelector('button[type="submit"]');
+      if(btn){
+        btn.disabled = true;
+        btn.textContent = 'Submitting...';
+      }
+      
+      fetch('/api/jobs/' + jobId + '/continue_to_submit', {method:'POST'})
+        .then(function(r){
+          if(!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function(res){
+          alert('Submit initiated successfully');
+          location.reload();
+        })
+        .catch(function(err){
+          alert('Submit failed: ' + err.message);
+          if(btn){
+            btn.disabled = false;
+            btn.textContent = 'Submit Changelist';
+          }
         });
     });
   }

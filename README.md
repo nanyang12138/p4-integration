@@ -87,25 +87,43 @@ Access the web interface at `http://localhost:5000/admin`:
 - **Done** - Review completed jobs
 - **Job Detail** - View logs, conflicts, and manage resolution
 
+## What's New in v2.1.0
+
+### Unified Submit Flow
+- **All submissions now use the complete workflow**: shelve → name_check → p4push
+- Fixed inconsistency where manual resolve used direct `p4 submit` (bypassing shelve)
+- `ready_to_submit` status now uses `continue_to_submit` API for consistent behavior
+
+### Configurable Auto-Submit
+- **New config option**: `auto_resolve.auto_submit` (default: `true`)
+  - `auto_submit: true` → Auto-submit when conflicts cleared (both auto-resolve and manual rescan)
+  - `auto_submit: false` → Wait for manual confirmation after conflicts cleared
+- Unified behavior between auto-resolve thread and manual rescan operations
+
+### Removed Deprecated APIs
+- Removed `admin_submit` method and routes (use `continue_to_submit` instead)
+- All submissions now go through proper shelving and validation
+- CLI `submit` command now uses complete workflow
+
 ## What's New in v2.0.0
 
 ### Manual Rescan Flow
-- **`rescan_conflicts()` no longer auto-submits** - it only rescans and updates conflict status
-- When conflicts are cleared, job moves to `ready_to_submit` status
-- Use new `continue_to_submit()` API or submit button to proceed after manual rescan
-- Auto-resolve background thread still works automatically for jobs not in manual mode
+- **`rescan_conflicts()` behavior** - controlled by `auto_submit` config
+- When conflicts are cleared and `auto_submit: true`, automatically continues to submit
+- When `auto_submit: false`, job moves to `ready_to_submit` status waiting for manual confirmation
+- Auto-resolve background thread respects the same `auto_submit` configuration
 
 ### API Changes
-- New endpoint: `POST /api/jobs/<job_id>/continue_to_submit` - explicitly continue to submit after conflicts cleared
-- `rescan_conflicts` now requires explicit submission step (prevents race conditions with manual operations)
+- Primary endpoint: `POST /api/jobs/<job_id>/continue_to_submit` - complete shelve + p4push workflow
+- Deprecated: `POST /api/jobs/<job_id>/submit` (removed in v2.1.0)
 
 ### Configuration
 - `max_queue_size` (default: 100) - limits number of jobs that can be queued
+- `auto_resolve.auto_submit` (default: true) - controls auto-submit behavior
 - Auto-resolve thread respects manual resolve operations (won't interfere)
 
 ### Status Values
-- Removed backward-compatible status normalization for old values
-- `ready_to_submit` - new status when manual rescan shows no conflicts
+- `ready_to_submit` - status when conflicts cleared and waiting for submission (if auto_submit=false)
 
 ## Architecture
 
@@ -163,6 +181,7 @@ max_queue_size: 100  # Max queued jobs
 auto_resolve:
   enabled: true      # Enable background conflict checking
   interval: 60       # Check interval (seconds)
+  auto_submit: true  # Auto-submit when conflicts cleared (both auto-resolve and manual rescan)
 
 # Auto-cleanup
 auto_cleanup_on_error: true  # Revert workspace on job failure

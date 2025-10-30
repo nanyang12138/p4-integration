@@ -54,7 +54,7 @@ def cmd_jobs_get(args: argparse.Namespace, cfg: Dict[str, Any]) -> int:
 
 def cmd_jobs_submit(args: argparse.Namespace, cfg: Dict[str, Any]) -> int:
     jm = _ensure_manager(cfg)
-    job = jm.admin_submit(args.job_id)
+    job = jm.continue_to_submit(args.job_id)
     _print_json(job)
     return 0
 

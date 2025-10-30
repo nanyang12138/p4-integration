@@ -2,6 +2,34 @@
 
 All notable changes to P4 Integration Service.
 
+## [2.1.0] - 2025-10-30
+
+### Fixed
+- 🐛 **Submit flow inconsistency**: All submissions now go through the complete shelve + p4push workflow
+- 🐛 **Auto-resolve behavior**: Unified auto-resolve and manual rescan behavior - both respect `auto_submit` config
+
+### Changed
+- 🔄 **Submit workflow**: `ready_to_submit` status now uses `continue_to_submit` API (complete workflow) instead of direct `p4 submit`
+- ⚙️ **Configurable auto-submit**: New `auto_resolve.auto_submit` config option controls whether to auto-submit after conflicts are cleared
+  - `auto_submit: true` (default): Auto-submit when conflicts cleared (maintains current behavior)
+  - `auto_submit: false`: Wait for manual confirmation after conflicts cleared
+
+### Removed
+- 🗑️ **Deprecated APIs**: Removed `admin_submit` method and routes (use `continue_to_submit` instead)
+  - Removed `POST /api/jobs/<id>/submit`
+  - Removed `POST /admin/jobs/<id>/submit`
+  - Removed `JobManager.admin_submit()` method
+
+### Breaking Changes
+- **API**: External systems using `/api/jobs/<id>/submit` must migrate to `/api/jobs/<id>/continue_to_submit`
+- **CLI**: `python -m app.cli jobs submit <id>` now uses complete workflow (shelve + p4push)
+
+### Benefits
+- ✅ All submissions now include shelving (code review friendly)
+- ✅ All submissions go through name_check remediation
+- ✅ Consistent behavior between auto-resolve and manual rescan
+- ✅ User experience is predictable and configurable
+
 ## [2.0.0] - 2025-10-29
 
 ### Added

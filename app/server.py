@@ -377,10 +377,6 @@ def register_routes(app: Flask, jobs: JobManager) -> None:
             return jsonify({"error": str(e), "pids": pids}), 500
 
 
-    @app.post("/api/jobs/<job_id>/submit")
-    def submit_job(job_id: str):
-        job = jobs.admin_submit(job_id)
-        return jsonify(job)
 
     # Admin UI
     @app.get("/admin")
@@ -503,12 +499,8 @@ def register_routes(app: Flask, jobs: JobManager) -> None:
         job = jobs.rescan_conflicts(job_id)
         return jsonify(job)
 
-    @app.post("/admin/jobs/<job_id>/submit")
-    def admin_submit(job_id: str):
-        job = jobs.admin_submit(job_id)
-        return render_template("job_detail.html", job=job, config=app.config.get("APP_CONFIG"), is_admin=True)
-
     # Removed admin approve/reject flows per simplified UI
+    # Note: admin_submit route removed - use continue_to_submit API instead
 
     # Cancel endpoint (unified for API and admin)
     @app.route("/api/jobs/<job_id>/cancel", methods=["POST", "GET"])
