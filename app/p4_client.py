@@ -126,21 +126,40 @@ class P4Client:
         if self.exec_mode == "ssh":
             import shlex
             inline = self._inline_env()
-            if is_branch:
-                # Legacy behavior for branch-spec integrate: preserve env prelude; do not inject -c
-                base_cmd = " ".join(shlex.quote(a) for a in [self.p4_bin] + args)
-                cmd = f"{inline} {base_cmd}" if inline else base_cmd
-                prelude_silent = f"{self._ssh_prelude} >/dev/null 2>&1 || true"
-                script = f"{prelude_silent}; {cmd}"
-                return self.runner.run_script(script, shell_path=self._ssh_shell, cwd=self.workspace_root, env=self._env(), input_text=input_text)
-            # Default: run with explicit client context using -c <client>, without sourcing shell env
+            
+            # Determine the actual p4 command (binary + arguments)
             cmd_args: List[str] = [self.p4_bin]
-            if self.client:
+            if not is_branch and self.client:
+                # For non-branch commands, explicitly set the client context
                 cmd_args += ["-c", self.client]
-            cmd = " ".join(shlex.quote(a) for a in cmd_args + args)
+            cmd_args += args
+            
+            base_cmd = " ".join(shlex.quote(a) for a in cmd_args)
+            
+            # If inline envs are needed, prepend them
             if inline:
-                cmd = f"{inline} {cmd}"
-            return self.runner.run_script(cmd, shell_path=self._ssh_shell, cwd=self.workspace_root, env=self._env(), input_text=input_text)
+                base_cmd = f"{inline} {base_cmd}"
+            
+            ws_path = shlex.quote(self.workspace_root)
+            
+            # Build the compound shell command
+            script_parts = []
+            
+            # 1. Ensure we are in the workspace root
+            script_parts.append(f"cd {ws_path}")
+            
+            # 2. Run prelude if it exists (silently)
+            if self._ssh_prelude:
+                script_parts.append(f"({self._ssh_prelude}) >/dev/null 2>&1 || true")
+            
+            # 3. Run the actual p4 command
+            script_parts.append(base_cmd)
+            
+            full_script = " && ".join(script_parts)
+            
+            # Execute via run_script which wraps in the shell
+            return self.runner.run_script(full_script, shell_path=self._ssh_shell, env=self._env(), input_text=input_text)
+
         # Local path
         if is_branch:
             # Do not inject -c for branch integrate

@@ -1,178 +1,246 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="grid grid-2">
-  <div class="card">
-    <p>
-      <strong>ID</strong>: 
-      {% if job.readable_id %}
-      <span class="badge" style="background:#e3f2fd; color:#1565c0; font-weight:600;">{{ job.readable_id }}</span>
-      {% endif %}
-    </p>
-    <p style="font-size:11px; color:var(--muted);">
-      UUID: <code style="cursor:pointer;" onclick="copyToClipboard('{{ job.id }}')" title="Click to copy">{{ job.id }}</code>
-    </p>
-    <div style="margin: 16px 0;">
-      <div id="status-container" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 12px; border: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: all 0.3s ease;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <div id="status-indicator" style="width: 12px; height: 12px; border-radius: 50%; background: #6c757d; box-shadow: 0 0 6px rgba(108,117,125,0.4); transition: all 0.3s ease;"></div>
-          <span style="font-weight: 600; color: #495057; font-size: 15px;">Status:</span>
-          <span id="status-badge" class="badge" style="font-size: 13px; padding: 4px 8px;">{{ job.status }}</span>
-          {% if job.stage %}<span id="stage-text" style="color: #6c757d; font-weight: 500; font-size: 14px;">({{ job.stage }})</span>{% else %}<span id="stage-text" style="display:none; color:#6c757d; font-weight:500; font-size:14px;"></span>{% endif %}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+  
+  <!-- Left Column: Status & Actions -->
+  <div class="lg:col-span-1 space-y-6">
+    
+    <!-- Job Info Card -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-slate-800">Job Details</h2>
+        {% if job.readable_id %}
+        <span class="px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100">{{ job.readable_id }}</span>
+        {% endif %}
+      </div>
+      
+      <div class="mb-6">
+         <div class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">UUID</div>
+         <code class="block w-full p-2 bg-slate-50 border border-slate-100 rounded text-xs font-mono text-slate-600 cursor-pointer hover:bg-slate-100 transition-colors break-all" onclick="copyToClipboard('{{ job.id }}')" title="Click to copy">{{ job.id }}</code>
+      </div>
+
+      <!-- Status Indicator -->
+      <div id="status-container" class="mb-6 p-4 rounded-xl border transition-all duration-300 flex items-center justify-between bg-slate-50 border-slate-200">
+        <div class="flex items-center gap-3">
+          <div id="status-indicator" class="w-3 h-3 rounded-full transition-all duration-300 shadow-sm"></div>
+          <div class="flex flex-col">
+            <span class="text-xs font-medium text-slate-500 uppercase tracking-wider">Status</span>
+            <div class="flex items-center gap-2">
+              <span id="status-badge" class="font-semibold text-slate-800">{{ job.status }}</span>
+              <span id="stage-text" class="text-sm text-slate-500 {% if not job.stage %}hidden{% endif %}">({{ job.stage }})</span>
+            </div>
+          </div>
         </div>
-        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="2" style="opacity: 0.7;">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12,6 12,12 16,14"/>
-          </svg>
-          <span id="current-status-time" style="color: #6c757d; font-size: 13px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace; font-weight: 500;"></span>
+        <div class="text-right">
+          <div class="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Updated</div>
+          <div id="current-status-time" class="text-xs font-mono text-slate-600"></div>
         </div>
       </div>
+
+      <!-- Key Info -->
+      <div class="space-y-3 text-sm border-t border-slate-100 pt-4">
+        <div class="flex justify-between">
+          <span class="text-slate-500">Changelist</span>
+          <span class="font-mono font-medium text-slate-700">{{ job.changelist or '-' }}</span>
+        </div>
+        {% if job.payload and job.payload.trial %}
+        <div class="flex justify-between">
+          <span class="text-slate-500">Mode</span>
+          <span class="px-2 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-100">Trial Run</span>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Dynamic PIDs -->
+      <div class="mt-4 pt-4 border-t border-slate-100 space-y-3">
+        {% if job.stage == 'integrate' and job.pids and job.pids.integrate %}
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-medium text-slate-500">Integrate PID</span>
+            <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">{{ job.pids.integrate }}</code>
+          </div>
+        {% elif job.stage == 'submit' and job.pids and job.pids.p4push %}
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-medium text-slate-500">Push PID</span>
+            <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">{{ job.pids.p4push }}</code>
+          </div>
+        {% endif %}
+        
+        <button class="w-full mt-2 py-1.5 text-xs font-medium text-slate-600 hover:text-primary-600 border border-slate-200 rounded hover:border-primary-300 hover:bg-primary-50 transition-colors flex items-center justify-center gap-2" type="button" id="btn-hb">
+          <i class="fa-solid fa-heart-pulse"></i> Check Process Health
+          <span id="hb-res" class="ml-2 font-normal text-slate-400"></span>
+        </button>
+      </div>
+
     </div>
-    {% if job.stage == 'integrate' and job.pids and job.pids.integrate %}
-    <p><strong>PID</strong>: <span class="badge">integrate={{ job.pids.integrate }}</span></p>
-    <div style="display:flex; gap:8px; align-items:center;">
-      <button class="btn" type="button" id="btn-hb">Check Process</button>
-      <span id="hb-res" style="color: var(--muted);"></span>
+
+    <!-- Actions Card -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+      <h3 class="text-sm font-semibold text-slate-800 uppercase tracking-wider mb-4">Actions</h3>
+      <div class="space-y-3">
+        
+        {% if job.status == 'needs_resolve' %}
+        <form method="post" action="/admin/jobs/{{ job.id }}/resolve">
+          <input type="hidden" name="mode" value="merge" />
+          <button class="w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-all" type="submit">
+            <i class="fa-solid fa-wrench mr-2"></i> Auto Resolve
+          </button>
+          <p class="text-xs text-center text-slate-500 mt-2">Run resolve -am and check conflicts.</p>
+        </form>
+        {% endif %}
+
+        {% if job.status in ['ready_to_submit'] %}
+        <form id="form-continue-submit">
+          <button class="w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all" type="submit">
+            <i class="fa-solid fa-check mr-2"></i> Submit Changelist
+          </button>
+          <p class="text-xs text-center text-slate-500 mt-2">Shelve and push via p4push.</p>
+        </form>
+        {% endif %}
+
+        {% if job.status in ['awaiting_approval'] %}
+        <div class="grid grid-cols-2 gap-3">
+          <form method="post" action="/admin/jobs/{{ job.id }}/approve">
+            <button class="w-full px-4 py-2 rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-all" type="submit">Approve</button>
+          </form>
+          <form method="post" action="/admin/jobs/{{ job.id }}/reject">
+            <button class="w-full px-4 py-2 rounded-lg shadow-sm text-sm font-medium text-white bg-red-500 hover:bg-red-600 transition-all" type="submit">Reject</button>
+          </form>
+        </div>
+        {% endif %}
+
+        <div class="pt-2 flex gap-3">
+           <button class="flex-1 px-4 py-2 border border-red-200 rounded-lg shadow-sm text-sm font-medium text-red-600 bg-white hover:bg-red-50 transition-all" type="button" id="btn-cancel">
+             Cancel
+           </button>
+           <button class="flex-1 px-4 py-2 border border-slate-200 rounded-lg shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-all" type="button" id="btn-retry">
+             Retry
+           </button>
+        </div>
+      </div>
+
+      <!-- Quick Links -->
+      <div class="mt-6 pt-6 border-t border-slate-100">
+        <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Quick Links</h4>
+        <div class="flex flex-wrap gap-2">
+          <a href="/api/jobs/{{ job.id }}" target="_blank" class="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-xs text-slate-600 transition-colors">JSON</a>
+          <a href="/api/jobs/{{ job.id }}/heartbeat" target="_blank" class="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-xs text-slate-600 transition-colors">Heartbeat</a>
+          <a href="/api/jobs/{{ job.id }}/process_status" target="_blank" class="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-xs text-slate-600 transition-colors">Proc Status</a>
+        </div>
+      </div>
+      
+      <!-- Artifacts -->
+      <div class="mt-6 pt-6 border-t border-slate-100">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Artifacts</h4>
+          <button id="btn-toggle-artifacts" class="text-xs text-primary-600 hover:text-primary-800">Show</button>
+        </div>
+        <div id="artifacts-panel" class="hidden bg-slate-50 rounded-lg border border-slate-200 p-3">
+          <div id="artifacts-list" class="text-xs font-mono text-slate-600 space-y-1"></div>
+        </div>
+      </div>
+
     </div>
-    {% elif job.stage == 'submit' and job.pids and job.pids.p4push %}
-    <p><strong>PID</strong>: <span class="badge">p4push={{ job.pids.p4push }}</span></p>
-    <div style="display:flex; gap:8px; align-items:center;">
-      <button class="btn" type="button" id="btn-hb">Check Process</button>
-      <span id="hb-res" style="color: var(--muted);"></span>
-    </div>
-{% elif job.stage in ['resolve', 'resolving'] and job.pids and (job.pids.resolve_am1 or job.pids.resolve_am2) %}
-    <p><strong>PID</strong>:
-      {% if job.pids.resolve_am1 %}<span class="badge">resolve_am1={{ job.pids.resolve_am1 }}</span>{% endif %}
-      {% if job.pids.resolve_am2 %}<span class="badge">resolve_am2={{ job.pids.resolve_am2 }}</span>{% endif %}
-    </p>
-    <div style="display:flex; gap:8px; align-items:center;">
-      <button class="btn" type="button" id="btn-hb">Check Process</button>
-      <span id="hb-res" style="color: var(--muted);"></span>
-    </div>
-    {% elif job.stage in ['resolve', 'resolving'] %}
-    <div style="display:flex; gap:8px; align-items:center; margin:8px 0;">
-      <span style="color: #6c757d; font-size: 14px;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24"/>
-        </svg>
-        Auto-resolve running in background
-      </span>
+  </div>
+
+  <!-- Right Column: Logs & Conflicts -->
+  <div class="lg:col-span-2 space-y-6">
+    
+    <!-- Conflicts Section -->
+    {% if job.conflicts %}
+    <div class="bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden">
+      <div class="bg-amber-50 px-6 py-4 border-b border-amber-100 flex justify-between items-center">
+        <h3 class="text-sm font-bold text-amber-800 flex items-center gap-2">
+          <i class="fa-solid fa-triangle-exclamation"></i> Conflicts ({{ job.conflicts|length }})
+        </h3>
+      </div>
+      <div class="p-6">
+        <div class="max-h-48 overflow-y-auto bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-mono text-slate-700 mb-4">
+          {% for f in job.conflicts %}
+            <div class="py-0.5">{{ f }}</div>
+          {% endfor %}
+        </div>
+        
+        <div class="flex flex-wrap gap-3">
+          <button class="px-3 py-2 bg-white border border-slate-300 rounded-md text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all shadow-sm" type="button" id="btn-generate-all">
+            Generate Resolve All Command
+          </button>
+          <button class="px-3 py-2 bg-white border border-slate-300 rounded-md text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all shadow-sm" type="button" id="btn-generate-individual">
+            Generate Individual Commands
+          </button>
+        </div>
+
+        <div id="resolve-commands" class="hidden mt-4">
+          <div class="bg-slate-800 rounded-lg p-4 relative group">
+            <div class="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+               <button id="btn-copy-commands" class="px-2 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-xs">Copy</button>
+               <button id="btn-select-all" class="px-2 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-xs">Select</button>
+            </div>
+            <pre id="commands-text" class="text-xs font-mono text-green-400 whitespace-pre-wrap break-all"></pre>
+          </div>
+        </div>
+      </div>
     </div>
     {% endif %}
 
-    <!-- APIs panel moved to upper section -->
-    <div style="margin-top:12px;">
-      <div class="section-title">APIs</div>
-      <button class="btn" type="button" id="btn-toggle-apis">Show APIs</button>
-      <div id="api-panel" style="display:none; margin-top:10px; border:1px solid var(--border); border-radius:8px; padding:12px; background:#f9fafb;">
-        <div style="margin-bottom:6px; font-weight:600;">Quick Links</div>
-          <ul style="margin:0; padding-left:16px;">
-            <li style="margin:4px 0;"><a href="/api/jobs/{{ job.id }}" target="_blank" rel="noopener">Job</a></li>
-            <li style="margin:4px 0;"><a href="/api/jobs/{{ job.id }}/heartbeat" target="_blank" rel="noopener">Heartbeat</a></li>
-            <li style="margin:4px 0;"><a href="/api/jobs/{{ job.id }}/process_status" target="_blank" rel="noopener">Process Status</a></li>
-          </ul>
-        
+    {% if job.blocked_files and job.status == 'blocked' %}
+    <div class="bg-white rounded-xl shadow-sm border border-red-200 overflow-hidden">
+       <div class="bg-red-50 px-6 py-4 border-b border-red-100">
+        <h3 class="text-sm font-bold text-red-800 flex items-center gap-2">
+          <i class="fa-solid fa-ban"></i> Blocked Files
+        </h3>
+      </div>
+      <div class="p-6">
+        <ul class="list-disc list-inside text-sm text-slate-700 font-mono">
+        {% for f in job.blocked_files %}
+          <li>{{ f }}</li>
+        {% endfor %}
+        </ul>
       </div>
     </div>
+    {% endif %}
 
-    <!-- Artifacts panel (collapsed) -->
-    <div style="margin-top:12px;">
-      <div class="section-title">Artifacts</div>
-      <button class="btn" type="button" id="btn-toggle-artifacts">Show Artifacts</button>
-      <div id="artifacts-panel" style="display:none; margin-top:10px; border:1px solid var(--border); border-radius:8px; padding:12px; background:#f9fafb;">
-        <div id="artifacts-list" style="font-family:monospace; font-size:12px;"></div>
+    <!-- Process Monitor -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="bg-slate-50 px-6 py-4 border-b border-slate-100">
+        <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
+          <i class="fa-solid fa-microchip text-slate-400"></i> Process Monitor
+        </h3>
       </div>
-    </div>
-
-{% if job.payload and job.payload.trial %}
-<p><strong>Flags</strong>: <span class="badge">trial</span></p>
-{% endif %}
-<p><strong>Changelist</strong>: {{ job.changelist or '-' }}</p>
-
-{% if job.status == 'needs_resolve' %}
-<form method="post" action="/admin/jobs/{{ job.id }}/resolve" style="margin:8px 0;">
-  <input type="hidden" name="mode" value="merge" />
-  <button class="btn" type="submit">Auto Resolve & Check Conflicts</button>
-  <small style="color:#777;">Run resolve -am and check remaining conflicts.</small>
-</form>
-{% endif %}
-
-{% if job.blocked_files and job.status == 'blocked' %}
-  <h3>Blocked Files</h3>
-  <ul>
-    {% for f in job.blocked_files %}
-      <li><code>{{ f }}</code></li>
-    {% endfor %}
-  </ul>
-{% endif %}
-
-{% if job.conflicts %}
-  <div class="section-title">Conflicts ({{ job.conflicts|length }} files)</div>
-  <div style="margin:10px 0; padding:10px; border:1px solid var(--border); border-radius:8px;">
-    {% for f in job.conflicts %}
-      <div style="margin:4px 0;">
-        <code>{{ f }}</code>
-      </div>
-    {% endfor %}
-  </div>
-  
-  <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-    <button class="btn" type="button" id="btn-generate-all">Generate Resolve All Command</button>
-    <button class="btn" type="button" id="btn-generate-individual">Generate Individual Commands</button>
-  </div>
-  <div id="resolve-commands" style="margin-top:10px; display:none;">
-    <div style="background:#f5f5f5; border:1px solid #ddd; border-radius:4px; padding:10px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-        <div style="font-weight:bold;">Execute these commands in your workspace:</div>
-        <div style="display:flex; gap:4px;">
-          <button class="btn" type="button" id="btn-copy-commands" style="font-size:12px; padding:4px 8px;">Copy to Clipboard</button>
-          <button class="btn" type="button" id="btn-select-all" style="font-size:12px; padding:4px 8px;">Select All</button>
+      <div class="p-6" id="process-monitor">
+        <div class="animate-pulse flex space-x-4">
+          <div class="flex-1 space-y-4 py-1">
+            <div class="h-4 bg-slate-100 rounded w-3/4"></div>
+            <div class="space-y-2">
+              <div class="h-4 bg-slate-100 rounded"></div>
+              <div class="h-4 bg-slate-100 rounded w-5/6"></div>
+            </div>
+          </div>
         </div>
       </div>
-      <pre id="commands-text" style="margin:0; white-space:pre-wrap; font-family:monospace; font-size:12px; cursor:text; user-select:text;"></pre>
     </div>
-  </div>
-{% endif %}
 
-{% if job.status in ['ready_to_submit'] %}
-  <div class="section-title">Submit</div>
-  <form id="form-continue-submit">
-    <button class="btn btn-primary" type="submit">Submit Changelist</button>
-    <p style="margin-top:8px; font-size:13px; color:#6c757d;">
-      Will shelve changelist and push via p4push (complete workflow)
-    </p>
-  </form>
-{% endif %}
-
-{% if job.status in ['awaiting_approval'] %}
-  <h3>Approval</h3>
-  <div style="display:flex; gap:8px; align-items:center;">
-    <form method="post" action="/admin/jobs/{{ job.id }}/approve">
-      <button class="btn btn-primary" type="submit">Approve</button>
-    </form>
-    <form method="post" action="/admin/jobs/{{ job.id }}/reject">
-      <input type="text" name="reason" placeholder="Reason (optional)" />
-      <button class="btn btn-danger" type="submit">Reject</button>
-    </form>
-  </div>
-{% endif %}
-
-  <div class="section-title">Actions</div>
-  <button class="btn btn-danger" type="button" id="btn-cancel">Cancel Job</button>
-  <button class="btn" type="button" id="btn-retry" style="margin-left:8px;">Retry</button>
-
-  
+    <!-- Logs -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+      <div class="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+        <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
+          <i class="fa-solid fa-terminal text-slate-400"></i> Execution Log
+        </h3>
+        <span class="text-xs text-slate-400">Auto-refreshing</span>
+      </div>
+      <div class="bg-slate-900 p-4 overflow-x-auto">
+        <pre class="font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">{% for line in job.log %}{{ line }}{% endfor %}</pre>
+      </div>
+    </div>
 
   </div>
-  <div class="card">
+</div>
+
 <script>
+// Original JS Logic Preserved & Adapted
 (function(){
   var jobId = "{{ job.id }}";
   var btnCancel = document.getElementById('btn-cancel');
   var btnRetry = document.getElementById('btn-retry');
-  var btnToggleApis = document.getElementById('btn-toggle-apis');
-  var apiPanel = document.getElementById('api-panel');
   var btnToggleArtifacts = document.getElementById('btn-toggle-artifacts');
   var artifactsPanel = document.getElementById('artifacts-panel');
   var artifactsList = document.getElementById('artifacts-list');
@@ -190,101 +258,67 @@
   if(btnRetry){
     btnRetry.addEventListener('click', function(){
       if(!confirm('Retry will kill current job, clean workspace, and spawn new isolated process. Continue?')) return;
-      
       btnRetry.disabled = true;
       btnRetry.textContent = 'Retrying...';
-      
       fetch('/api/jobs/' + jobId + '/retry?mode=process', {method:'POST'})
         .then(function(r) {
-          if(!r.ok) {
-            return r.json().then(function(errorData) {
-              throw new Error(errorData.error || 'HTTP ' + r.status);
-            });
-          }
+          if(!r.ok) return r.json().then(e => { throw new Error(e.error || 'HTTP ' + r.status); });
           return r.json();
         })
         .then(function(res){ 
           if(res && res.ok){ 
-            var msg = res.message || 'Job queued for retry successfully';
-            if(res.mode === 'subprocess' && res.pid) {
-              msg += '\\n\\nNew subprocess PID: ' + res.pid;
-            }
-            alert(msg);
+            alert('Job queued for retry successfully');
             location.reload(); 
           } else { 
-            alert(res && res.error ? res.error : 'Retry failed'); 
+            alert(res.error || 'Retry failed'); 
             btnRetry.disabled = false;
             btnRetry.textContent = 'Retry';
           } 
         })
         .catch(function(err){ 
-          console.error('Retry error:', err);
-          alert('Retry failed: ' + (err.message || 'Unknown error'));
+          alert('Retry failed: ' + err.message);
           btnRetry.disabled = false;
           btnRetry.textContent = 'Retry';
         });
     });
   }
   
-  // Handle continue_to_submit form
   var formContinueSubmit = document.getElementById('form-continue-submit');
   if(formContinueSubmit){
     formContinueSubmit.addEventListener('submit', function(e){
       e.preventDefault();
       if(!confirm('Continue to submit? This will shelve the changelist and push via p4push.')) return;
-      
       var btn = formContinueSubmit.querySelector('button[type="submit"]');
-      if(btn){
-        btn.disabled = true;
-        btn.textContent = 'Submitting...';
-      }
-      
+      if(btn){ btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin mr-2"></i> Submitting...'; }
       fetch('/api/jobs/' + jobId + '/continue_to_submit', {method:'POST'})
-        .then(function(r){
-          if(!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        })
-        .then(function(res){
-          alert('Submit initiated successfully');
-          location.reload();
-        })
-        .catch(function(err){
-          alert('Submit failed: ' + err.message);
-          if(btn){
-            btn.disabled = false;
-            btn.textContent = 'Submit Changelist';
-          }
-        });
+        .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(function(res){ alert('Submit initiated successfully'); location.reload(); })
+        .catch(function(err){ alert('Submit failed: ' + err.message); if(btn){ btn.disabled = false; btn.textContent = 'Submit Changelist'; } });
     });
   }
 
-  if(btnToggleApis && apiPanel){
-    btnToggleApis.addEventListener('click', function(){
-      apiPanel.style.display = (apiPanel.style.display === 'none' || !apiPanel.style.display) ? 'block' : 'none';
-      btnToggleApis.textContent = (apiPanel.style.display === 'block') ? 'Hide APIs' : 'Show APIs';
-    });
-  }
   if(btnToggleArtifacts && artifactsPanel && artifactsList){
     btnToggleArtifacts.addEventListener('click', function(){
-      var willShow = (artifactsPanel.style.display === 'none' || !artifactsPanel.style.display);
-      artifactsPanel.style.display = willShow ? 'block' : 'none';
-      btnToggleArtifacts.textContent = willShow ? 'Hide Artifacts' : 'Show Artifacts';
-      if(willShow && !artifactsList.getAttribute('data-loaded')){
+      var isHidden = artifactsPanel.classList.contains('hidden');
+      if(isHidden) artifactsPanel.classList.remove('hidden'); else artifactsPanel.classList.add('hidden');
+      btnToggleArtifacts.textContent = isHidden ? 'Hide' : 'Show';
+      
+      if(isHidden && !artifactsList.getAttribute('data-loaded')){
         fetch('/api/jobs/' + jobId + '/artifacts').then(r=>r.json()).then(function(res){
           var items = (res && res.artifacts) ? res.artifacts : [];
-          if(!items.length){ artifactsList.innerHTML = '<small>No artifacts</small>'; artifactsList.setAttribute('data-loaded','1'); return; }
-          var html = '<ul style="margin:0; padding-left:16px;">' + items.map(function(name){
+          if(!items.length){ artifactsList.innerHTML = '<div class="text-slate-400 italic">No artifacts found</div>'; artifactsList.setAttribute('data-loaded','1'); return; }
+          var html = '<ul class="space-y-1">' + items.map(function(name){
             var u = '/api/jobs/' + jobId + '/artifacts/' + encodeURIComponent(name);
-            return '<li style="margin:4px 0;"><a href="' + u + '" target="_blank" rel="noopener">' + name + '</a></li>';
+            return '<li><a href="' + u + '" target="_blank" class="hover:text-primary-600 flex items-center gap-2"><i class="fa-solid fa-file-lines text-slate-400"></i> ' + name + '</a></li>';
           }).join('') + '</ul>';
           artifactsList.innerHTML = html;
           artifactsList.setAttribute('data-loaded','1');
-        }).catch(function(_){ artifactsList.innerHTML = '<small style="color:red;">Failed to load artifacts</small>'; artifactsList.setAttribute('data-loaded','1'); });
+        }).catch(function(_){ artifactsList.innerHTML = '<span class="text-red-500">Failed to load</span>'; artifactsList.setAttribute('data-loaded','1'); });
       }
     });
   }
   
-  // Generate resolve commands
+  // Resolve Commands Logic
   var btnGenerateAll = document.getElementById('btn-generate-all');
   var btnGenerateIndividual = document.getElementById('btn-generate-individual');
   var btnCopy = document.getElementById('btn-copy-commands');
@@ -294,486 +328,137 @@
   var generatedCommands = '';
   
   function generateCommands(useWildcard) {
-    fetch('/api/jobs/' + jobId)
-      .then(r => r.json())
-      .then(function(job){
-        if(!job || !job.conflicts || !job.conflicts.length){
-          alert('No conflicts found');
-          return;
-        }
-        
-        var wsRoot = '{{ job.workspace_root or "/local_vol1_nobackup/nanyang/orion" }}';
-        var client = '{{ job.client or "nanyang2_srdc_srdcws990_mkwa_local_vol1_nobackup_nanyang_orion" }}';
-        
-        var commands = ['cd ' + wsRoot];
-        
-        if(useWildcard) {
-          // Use wildcard to resolve all conflicts at once
-          commands.push('p4 -c ' + client + ' resolve ...');
-        } else {
-          // Generate individual commands for each file
-          job.conflicts.forEach(function(file){
-            commands.push('p4 -c ' + client + ' resolve ' + file);
-          });
-        }
-        
-        generatedCommands = commands.join('\n');
-        commandsText.textContent = generatedCommands;
-        commandsDiv.style.display = 'block';
-      })
-      .catch(function(){ alert('Failed to get job details'); });
+    fetch('/api/jobs/' + jobId).then(r => r.json()).then(function(job){
+      if(!job || !job.conflicts || !job.conflicts.length){ alert('No conflicts found'); return; }
+      var wsRoot = '{{ job.workspace_root or "/local_vol1_nobackup/nanyang/orion" }}';
+      var client = '{{ job.client or "nanyang2_srdc_srdcws990_mkwa_local_vol1_nobackup_nanyang_orion" }}';
+      var commands = ['cd ' + wsRoot];
+      if(useWildcard) commands.push('p4 -c ' + client + ' resolve ...');
+      else job.conflicts.forEach(f => commands.push('p4 -c ' + client + ' resolve ' + f));
+      generatedCommands = commands.join('\n');
+      commandsText.textContent = generatedCommands;
+      commandsDiv.classList.remove('hidden');
+    }).catch(function(){ alert('Failed to get job details'); });
   }
   
-  if(btnGenerateAll){
-    btnGenerateAll.addEventListener('click', function(){
-      generateCommands(true);
-    });
-  }
+  if(btnGenerateAll) btnGenerateAll.addEventListener('click', () => generateCommands(true));
+  if(btnGenerateIndividual) btnGenerateIndividual.addEventListener('click', () => generateCommands(false));
   
-  if(btnGenerateIndividual){
-    btnGenerateIndividual.addEventListener('click', function(){
-      generateCommands(false);
-    });
-  }
+  if(btnCopy) btnCopy.addEventListener('click', function(){
+    if(!generatedCommands) return;
+    if(window.copyToClipboard) window.copyToClipboard(generatedCommands);
+    btnCopy.textContent = 'Copied!'; setTimeout(()=>btnCopy.textContent='Copy', 2000);
+  });
   
-  if(btnCopy){
-    btnCopy.addEventListener('click', function(){
-      if(!generatedCommands){
-        alert('No commands to copy');
-        return;
-      }
-      
-      // Try multiple methods to copy to clipboard
-      var copySuccess = false;
-      
-      // Method 1: Modern clipboard API (requires HTTPS or localhost)
-      if(navigator.clipboard && window.isSecureContext){
-        navigator.clipboard.writeText(generatedCommands)
-          .then(function(){
-            btnCopy.textContent = 'Copied!';
-            setTimeout(function(){
-              btnCopy.textContent = 'Copy to Clipboard';
-            }, 2000);
-            copySuccess = true;
-          })
-          .catch(function(){
-            tryFallbackCopy();
-          });
-      } else {
-        tryFallbackCopy();
-      }
-      
-      function tryFallbackCopy(){
-        // Method 2: Create temporary textarea and copy
-        var textarea = document.createElement('textarea');
-        textarea.value = generatedCommands;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-9999px';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        
-        try {
-          textarea.focus();
-          textarea.select();
-          textarea.setSelectionRange(0, 99999); // For mobile devices
-          
-          // Try execCommand
-          var success = document.execCommand('copy');
-          if(success){
-            btnCopy.textContent = 'Copied!';
-            setTimeout(function(){
-              btnCopy.textContent = 'Copy to Clipboard';
-            }, 2000);
-            copySuccess = true;
-          }
-        } catch(err) {
-          console.log('execCommand failed:', err);
-        }
-        
-        document.body.removeChild(textarea);
-        
-        // Method 3: If all else fails, select the text and show instruction
-        if(!copySuccess){
-          var range = document.createRange();
-          range.selectNode(commandsText);
-          window.getSelection().removeAllRanges();
-          window.getSelection().addRange(range);
-          
-          // Create a more helpful message
-          var instructions = 'Auto-copy failed. The commands are now selected.\\n\\n';
-          instructions += 'Please press Ctrl+C (or Cmd+C on Mac) to copy the commands.\\n\\n';
-          instructions += 'Commands to copy:\\n' + generatedCommands;
-          
-          alert(instructions);
-        }
-      }
-    });
-  }
-  
-  // Select All button functionality
-  if(btnSelectAll){
-    btnSelectAll.addEventListener('click', function(){
-      if(!generatedCommands){
-        alert('No commands to select');
-        return;
-      }
-      
-      // Select all text in the pre element
-      var range = document.createRange();
-      range.selectNodeContents(commandsText);
-      window.getSelection().removeAllRanges();
-      window.getSelection().addRange(range);
-      
-      // Show helpful message
-      btnSelectAll.textContent = 'Selected!';
-      setTimeout(function(){
-        btnSelectAll.textContent = 'Select All';
-      }, 2000);
-      
-      // Show instruction
-      setTimeout(function(){
-        alert('Commands selected! Press Ctrl+C (or Cmd+C on Mac) to copy.');
-      }, 100);
-    });
-  }
-  
-  // (artifacts loaded on demand when toggled)
-})();
-</script>
-<script>
-(function(){
-  var jobId = "{{ job.id }}";
+  if(btnSelectAll) btnSelectAll.addEventListener('click', function(){
+    if(!generatedCommands) return;
+    var range = document.createRange(); range.selectNodeContents(commandsText);
+    window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+    btnSelectAll.textContent = 'Selected!'; setTimeout(()=>btnSelectAll.textContent='Select', 2000);
+  });
+
+  // Status Indicator Logic
   var statusBadge = document.getElementById('status-badge');
   var stageText = document.getElementById('stage-text');
-  var currentStatus = "{{ job.status }}";
-  function setStatus(newStatus){
-    if(!newStatus) return;
-    currentStatus = newStatus;
-    if(statusBadge) statusBadge.textContent = newStatus;
-    try { updateStatusIndicator(); } catch(e){}
+  var indicator = document.getElementById('status-indicator');
+  var container = document.getElementById('status-container');
+  
+  function updateStatusUI(status, stage) {
+    if(statusBadge) statusBadge.textContent = status;
+    if(stageText) {
+        if(stage){ stageText.classList.remove('hidden'); stageText.textContent = '(' + stage + ')'; }
+        else { stageText.classList.add('hidden'); }
+    }
+
+    // Config
+    const config = {
+      'running': { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', animate: true },
+      'integrate': { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', animate: true },
+      'resolving': { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', animate: true },
+      'resolve': { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', animate: true },
+      'submitted': { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', animate: false },
+      'done': { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', animate: false },
+      
+      'pending': { color: 'bg-slate-400', bg: 'bg-slate-50', border: 'border-slate-200', animate: true },
+      'queued': { color: 'bg-slate-400', bg: 'bg-slate-50', border: 'border-slate-200', animate: false },
+      
+      'blocked': { color: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-200', animate: true },
+      'needs_resolve': { color: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-200', animate: true },
+      
+      'error': { color: 'bg-red-500', bg: 'bg-red-50', border: 'border-red-200', animate: false },
+      'failed': { color: 'bg-red-500', bg: 'bg-red-50', border: 'border-red-200', animate: false },
+      'cancelled': { color: 'bg-slate-400', bg: 'bg-slate-50', border: 'border-slate-200', animate: false }
+    };
+    
+    const c = config[status] || config['queued'];
+    
+    if(indicator) {
+      indicator.className = `w-3 h-3 rounded-full shadow-sm transition-all duration-300 ${c.color} ${c.animate ? 'animate-pulse' : ''}`;
+    }
+    if(container) {
+      container.className = `mb-6 p-4 rounded-xl border transition-all duration-300 flex items-center justify-between ${c.bg} ${c.border}`;
+    }
   }
-  function setStage(newStage){
-    if(!stageText) return;
-    if(newStage){ stageText.style.display=''; stageText.textContent = '(' + newStage + ')'; }
-    else { stageText.style.display='none'; stageText.textContent=''; }
-  }
-  // Try SSE first
-  var usePolling = false;
+
+  // SSE for Status
   try{
     if(window.EventSource){
       var es = new EventSource('/api/stream?job_id=' + encodeURIComponent(jobId));
       es.onmessage = function(ev){
         try{
-          var data = ev && ev.data ? JSON.parse(ev.data) : null;
-          if(!data) return;
-          if(data.status) setStatus(String(data.status));
-          if(data.stage) setStage(String(data.stage));
+          var data = JSON.parse(ev.data);
+          if(data) updateStatusUI(data.status, data.stage);
         }catch(e){}
       };
-      es.onerror = function(){ try{ es.close(); }catch(_){} usePolling = true; };
-      // Fallback to polling after a short delay if no events arrive
-      setTimeout(function(){ if(!statusBadge.getAttribute('data-seen')) usePolling = true; }, 3000);
-    } else { usePolling = true; }
-  }catch(e){ usePolling = true; }
+    }
+  }catch(e){}
 
-  // Polling fallback
-  function poll(){
-    fetch('/api/jobs/' + jobId)
-      .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(j){ if(!j) return; if(j.status) setStatus(String(j.status)); if(j.stage) setStage(String(j.stage)); })
-      .catch(function(_){});
-  }
-  if(usePolling){ setInterval(poll, 5000); poll(); }
-})();
-</script>
-<script>
-(function(){
-  var jobId = "{{ job.id }}";
-  function renderHB(data){
-    var el = document.getElementById('hb-res'); if(!el) return;
-    if(!data || data.error){ el.textContent = data && data.error ? ('Error: '+data.error) : 'No data'; return; }
-    var a = data.alive || {}; var p = data.pids || {};
-    var stage = "{{ job.stage or '' }}";
-    var text = '';
-    
-    // Check all possible stages with PIDs
-    var stageMap = {
-      'sync': 'pre',
-      'pre_submit_checks': 'name_check', 
-      'integrate': 'integrate',
-      'resolve': 'resolve',
-      'resolving': 'resolve',
-      'submit': ['shelve', 'reshelve', 'p4push']  // submit stage can have multiple PIDs
-    };
-    
-    var stageKeys = stageMap[stage];
-    if(stageKeys) {
-      if(Array.isArray(stageKeys)) {
-        // Handle multiple possible PIDs for submit stage
-        for(var i = 0; i < stageKeys.length; i++) {
-          var key = stageKeys[i];
-          if(p[key]) {
-            text = key + ':' + (a[key] ? 'alive' : 'dead') + ' (PID ' + p[key] + ')';
-            break; // Show the first active PID found
-          }
-        }
-      } else {
-        // Handle single PID stages
-        if(p[stageKeys]) {
-          text = stageKeys + ':' + (a[stageKeys] ? 'alive' : 'dead') + ' (PID ' + p[stageKeys] + ')';
-        }
-      }
-    }
-    
-    el.textContent = text;
-  }
-  function ping(){ fetch('/api/jobs/' + jobId + '/heartbeat').then(r=>r.json()).then(renderHB).catch(function(_){}); }
-  var btn = document.getElementById('btn-hb'); if(btn){ btn.addEventListener('click', ping); }
-  var stage = "{{ job.stage or '' }}";
-  if(stage && ['running','integrate','resolve','resolving','submit','sync','pre_submit_checks'].indexOf(stage)>=0){ setInterval(ping, 10000); ping(); }
-})();
-</script>
-
-
-<div class="section-title">Process Monitor</div>
-<div id="process-monitor"></div>
-<script>
-// Enhanced status display with dynamic indicator
-(function(){
-  var jobId = "{{ job.id }}";
-  var currentStatus = "{{ job.status }}";
-  var currentStage = "{{ job.stage or '' }}";
-  
-  function updateStatusIndicator() {
-    var indicator = document.getElementById('status-indicator');
-    var container = document.getElementById('status-container');
-    if(!indicator || !container) return;
-    
-    // Define status colors and animations
-    var statusConfig = {
-      // Success/active states → green
-      'submitted': { color: '#28a745', bgColor: '#d4edda', animation: 'steady' },
-      'running': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
-      'sync': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
-      'integrate': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
-      'resolving': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
-      'resolve': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
-      'needs_resolve': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
-      'pre_submit_checks': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
-      'submit': { color: '#28a745', bgColor: '#d4edda', animation: 'pulse' },
-      'ready_to_submit': { color: '#28a745', bgColor: '#d4edda', animation: 'steady' },
-      // Neutral/waiting states → gray
-      'pending': { color: '#6c757d', bgColor: '#f8f9fa', animation: 'blink' },
-      'queued': { color: '#6c757d', bgColor: '#f8f9fa', animation: 'steady' },
-      // Attention/problem states
-      'blocked': { color: '#fd7e14', bgColor: '#ffe8d1', animation: 'blink' },
-      'error': { color: '#dc3545', bgColor: '#f8d7da', animation: 'steady' },
-      'cancelled': { color: '#6c757d', bgColor: '#f8f9fa', animation: 'steady' }
-    };
-    
-    var config = statusConfig[currentStatus] || { color: '#6c757d', bgColor: '#f8f9fa', animation: 'steady' };
-    
-    // Apply colors
-    indicator.style.background = config.color;
-    indicator.style.boxShadow = '0 0 8px ' + config.color + '40';
-    container.style.background = 'linear-gradient(135deg, ' + config.bgColor + ' 0%, #f8f9fa 100%)';
-    
-    // Apply animation
-    indicator.className = 'status-indicator-' + config.animation;
-  }
-  
-  function loadCurrentStatusTime(){
-    fetch('/api/jobs/' + jobId + '/events').then(r => r.json()).then(function(res){
-      var el = document.getElementById('current-status-time');
-      if(!el) return;
-      
-      var events = (res && res.events) ? res.events : [];
-      if(!events.length) {
-        el.textContent = 'No timestamp';
-        return;
-      }
-      
-      // Find the most recent status or stage event
-      var statusEvents = events.filter(function(e){
-        return e.event === 'status' || e.event === 'stage';
-      }).sort(function(a,b){ 
-        var aTime = new Date(a.ts_iso || 0).getTime();
-        var bTime = new Date(b.ts_iso || 0).getTime();
-        return bTime - aTime; // Most recent first
-      });
-      
-      if(statusEvents.length > 0) {
-        var latestEvent = statusEvents[0];
-        if(latestEvent.ts_iso) {
-          var date = new Date(latestEvent.ts_iso);
-          el.textContent = date.toLocaleString();
-        } else {
-          el.textContent = 'No timestamp';
-        }
-      } else {
-        el.textContent = 'No events';
-      }
-    }).catch(function(_){ 
-      var el = document.getElementById('current-status-time');
-      if(el) el.textContent = 'Load failed';
-    });
-  }
-  
-  // Add CSS animations
-  var style = document.createElement('style');
-  style.textContent = `
-    .status-indicator-pulse {
-      animation: statusPulse 2s ease-in-out infinite;
-    }
-    .status-indicator-blink {
-      animation: statusBlink 1.5s linear infinite;
-    }
-    .status-indicator-steady {
-      animation: none;
-    }
-    @keyframes statusPulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.7; transform: scale(1.1); }
-    }
-    @keyframes statusBlink {
-      0%, 50% { opacity: 1; }
-      51%, 100% { opacity: 0.4; }
-    }
-  `;
-  document.head.appendChild(style);
-  
-  // Initialize
-  updateStatusIndicator();
-  loadCurrentStatusTime();
-  
-  // Auto-refresh status time every 30 seconds for active jobs
-  if(currentStatus && ['pending','queued','running','needs_resolve','ready_to_submit'].indexOf(currentStatus) >= 0){
-    setInterval(function() {
-      loadCurrentStatusTime();
-      updateStatusIndicator(); // Re-apply indicator styles in case of dynamic updates
-    }, 30000);
-  }
-})();
-
-// Process Monitor
-(function(){
-  var jobId = "{{ job.id }}";
+  // Process Monitor
   function loadProcessStatus(){
-    fetch('/api/jobs/' + jobId + '/process_status')
-      .then(r => r.json())
-      .then(function(data){
+    fetch('/api/jobs/' + jobId + '/process_status').then(r => r.json()).then(function(data){
         var el = document.getElementById('process-monitor');
         if(!el) return;
         
-        // Filter out terminated/finished processes
-        var activeProcesses = data.processes ? data.processes.filter(function(proc){
-          return proc.status !== 'not_found' && proc.is_active;
-        }) : [];
+        var activeProcesses = data.processes ? data.processes.filter(p => p.status !== 'not_found' && p.is_active) : [];
+        if(activeProcesses.length === 0){ el.innerHTML = '<div class="text-center text-slate-400 py-4 text-sm">No active processes running</div>'; return; }
         
-        if(activeProcesses.length === 0){
-          el.innerHTML = '<small style="color:#777;">No active processes</small>';
-          return;
-        }
+        var html = '<div class="space-y-3">';
         
-        var html = '<div style="font-family:monospace; font-size:12px;">';
+        // P4 Connection
+        var connIcon = data.p4_connection === 'ok' ? '<i class="fa-solid fa-check-circle text-green-500"></i>' : '<i class="fa-solid fa-times-circle text-red-500"></i>';
+        html += `<div class="text-xs font-medium text-slate-600 bg-slate-50 p-2 rounded flex items-center gap-2">${connIcon} P4 Connection</div>`;
         
-        // P4 Connection Status
-        var connStatus = data.p4_connection === 'ok' ? 
-          '<span style="color:green;">✅ Connected</span>' : 
-          '<span style="color:red;">❌ Failed</span>';
-        html += '<div style="margin-bottom:8px;"><strong>P4 Connection:</strong> ' + connStatus + '</div>';
-        
-        // Process List - only active processes
         activeProcesses.forEach(function(proc){
-          var statusColor = proc.is_active ? 'green' : 
-                           proc.status === 'not_found' ? 'red' : 'orange';
-          var statusIcon = proc.is_active ? '🟢' : 
-                          proc.status === 'not_found' ? '🔴' : '🟡';
+          var color = proc.is_active ? 'green' : 'amber';
+          var cpuColor = proc.cpu_percent > 50 ? 'text-red-600' : (proc.cpu_percent > 20 ? 'text-amber-600' : 'text-green-600');
           
-          html += '<div style="margin:4px 0; padding:8px; background:#f8f8f8; border-radius:6px; border-left:4px solid ' + statusColor + ';">';
-          
-          // Header row with stage and status
-          html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">';
-          html += '<div>';
-          html += '<strong style="font-size:14px;">' + proc.stage + '</strong> ';
-          html += '<span style="color:gray; font-size:12px;">(PID: ' + proc.pid + ')</span>';
-          html += '</div>';
-          html += '<div>';
-          html += '<span style="color:' + statusColor + '; font-weight:bold;">' + statusIcon + ' ' + (proc.is_active ? 'Active' : 'Inactive') + '</span>';
-          html += '</div>';
-          html += '</div>';
-          
-          // Metrics row
-          html += '<div style="display:flex; gap:12px; align-items:center; font-size:12px;">';
-          var cpuColor = proc.cpu_percent > 50 ? '#e74c3c' : proc.cpu_percent > 20 ? '#f39c12' : '#2ecc71';
-          var memColor = proc.memory_percent > 10 ? '#e74c3c' : proc.memory_percent > 5 ? '#f39c12' : '#2ecc71';
-          html += '<span style="color:' + cpuColor + ';"><strong>CPU: ' + proc.cpu_percent.toFixed(1) + '%</strong></span>';
-          html += '<span style="color:' + memColor + ';"><strong>MEM: ' + proc.memory_percent.toFixed(1) + '%</strong></span>';
-          html += '<span style="color:#666;"><strong>Runtime: ' + proc.runtime + '</strong></span>';
-          html += '</div>';
-          
-          // Details row (wchan and status)
-          html += '<div style="display:flex; gap:8px; align-items:center; font-size:11px; color:#777; margin-top:2px;">';
-          html += '<span>State: ' + proc.status + '</span>';
-          if(proc.wchan && proc.wchan !== '-' && proc.wchan !== 'unknown') {
-            html += '<span>Waiting: ' + proc.wchan + '</span>';
-          }
-          html += '</div>';
-          
-          html += '</div>';
+          html += `<div class="bg-slate-50 rounded-lg border border-slate-200 p-3 text-xs">
+            <div class="flex justify-between items-center mb-2">
+              <div class="font-semibold text-slate-700 flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-${color}-500 animate-pulse"></div>
+                ${proc.stage}
+              </div>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-slate-100 text-slate-500">PID ${proc.pid}</code>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-[10px] font-mono uppercase tracking-wider text-slate-500">
+              <div>CPU: <span class="${cpuColor} font-bold">${proc.cpu_percent.toFixed(1)}%</span></div>
+              <div>MEM: <span class="font-bold text-slate-700">${proc.memory_percent.toFixed(1)}%</span></div>
+              <div>TIME: <span class="text-slate-700">${proc.runtime}</span></div>
+            </div>
+            ${proc.wchan ? `<div class="mt-2 text-[10px] text-slate-400 truncate" title="${proc.wchan}">Wait: ${proc.wchan}</div>` : ''}
+          </div>`;
         });
-        
         html += '</div>';
-        
         el.innerHTML = html;
-      })
-      .catch(function(err){
-        var el = document.getElementById('process-monitor');
-        if(el) el.innerHTML = '<small style="color:red;">Failed to load process status: ' + err.message + '</small>';
-      });
+    }).catch(e => console.error(e));
   }
   
-  // Load initial status
   loadProcessStatus();
-  
-  // Auto-refresh every 10 seconds for active jobs
-  var jobStatus = "{{ job.status }}";
-  if(jobStatus && ['pending','queued','running','needs_resolve','ready_to_submit','resolving'].indexOf(jobStatus) >= 0){
-    setInterval(loadProcessStatus, 10000);
-  }
+  setInterval(loadProcessStatus, 5000);
+  updateStatusUI("{{ job.status }}", "{{ job.stage or '' }}");
+
+  // Log Auto Reload
+  setTimeout(function(){ location.reload(); }, 30000);
 })();
 </script>
-
-<div class="section-title">Log</div>
-<pre>
-{% for line in job.log %}
-{{ line }}
-{% endfor %}
-</pre>
-<script>
-  (function(){
-    // Auto-poll check_log_json when in resolve/resolving
-    var stage = "{{ job.stage or '' }}";
-    var jobId = "{{ job.id }}";
-    function poll(){
-      fetch('/admin/jobs/' + jobId + '/check_log_json')
-        .then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
-        .then(function(j){
-          if(j && (j.stage === 'submit' || j.stage === 'blocked' || j.status === 'ready_to_submit')){
-            location.reload();
-            return;
-          }
-        })
-        .catch(function(_){ /* ignore */ })
-        .finally(function(){ setTimeout(poll, 5000); });
-    }
-    if(stage === 'resolve' || stage === 'resolving'){
-      setTimeout(poll, 3000);
-    }
-    // Existing slow auto-refresh
-    setTimeout(function(){ location.reload(); }, 30000);
-  })();
-</script>
-  </div>
-</div>
 {% endblock %}

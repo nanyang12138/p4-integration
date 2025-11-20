@@ -1,22 +1,68 @@
 {% extends "layout.html" %}
 {% block content %}
-<h3>Visual Merge: <code>{{ file }}</code></h3>
-<div id="merge-root" style="border:1px solid #ddd; height:72vh;"></div>
-<div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-  <button class="btn" id="btn-apply-merge">Apply Merge (-am)</button>
-  <button class="btn" id="btn-apply-theirs">Apply Theirs (-at)</button>
-  <button class="btn" id="btn-apply-yours">Apply Yours (-ay)</button>
-  <span style="margin:0 8px;">|</span>
-  <button class="btn" id="btn-prev">Prev Conflict</button>
-  <button class="btn" id="btn-next">Next Conflict</button>
-  <a class="btn" href="/admin/jobs/{{ job.id }}">Back</a>
-  <span id="status" style="margin-left:8px; color:#555;"></span>
-  <span style="margin-left:auto; color:#999;">Auto refresh every 30s</span>
-  <script>setTimeout(function(){ try { if(window.opener) window.opener.location.reload(); } catch(_){} }, 30000);</script>
+<div class="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-140px)]">
+  <!-- Header -->
+  <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+    <div>
+      <div class="flex items-center gap-2 text-slate-800">
+        <i class="fa-solid fa-code-compare text-primary-500"></i>
+        <h3 class="font-mono text-sm font-semibold">{{ file }}</h3>
+      </div>
+      <p class="text-xs text-slate-500 mt-1">Visual Merge Editor</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="status" class="text-xs font-medium text-slate-500"></span>
+      <div class="h-4 w-px bg-slate-300 mx-2"></div>
+      <a class="text-slate-500 hover:text-slate-800 text-xs font-medium transition-colors" href="/admin/jobs/{{ job.id }}">
+        <i class="fa-solid fa-arrow-left mr-1"></i> Back to Job
+      </a>
+    </div>
+  </div>
+
+  <!-- Editor Area -->
+  <div id="merge-root" class="flex-grow border-b border-slate-100 overflow-hidden text-sm font-mono"></div>
+
+  <!-- Controls -->
+  <div class="p-4 bg-white flex flex-wrap items-center justify-between gap-4">
+    
+    <div class="flex items-center gap-2">
+      <button class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg shadow-sm transition-colors flex items-center gap-2" id="btn-apply-merge">
+        <i class="fa-solid fa-check"></i> Apply Merge (-am)
+      </button>
+      <button class="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium rounded-lg shadow-sm transition-colors" id="btn-apply-theirs">
+        Accept Theirs (-at)
+      </button>
+      <button class="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium rounded-lg shadow-sm transition-colors" id="btn-apply-yours">
+        Accept Yours (-ay)
+      </button>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <button class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition-colors" id="btn-prev">
+        <i class="fa-solid fa-chevron-left mr-1"></i> Prev Conflict
+      </button>
+      <button class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition-colors" id="btn-next">
+        Next Conflict <i class="fa-solid fa-chevron-right ml-1"></i>
+      </button>
+    </div>
+    
+  </div>
 </div>
 
+<!-- Auto Refresh Hint -->
+<div class="text-center mt-2 text-[10px] text-slate-400">
+  <i class="fa-solid fa-rotate"></i> Auto-refreshes job list in background every 30s
+</div>
+<script>setTimeout(function(){ try { if(window.opener) window.opener.location.reload(); } catch(_){} }, 30000);</script>
+
+<!-- CodeMirror Assets -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/merge/merge.css">
+<style>
+  .CodeMirror { height: 100%; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; line-height: 1.5; }
+  .CodeMirror-merge, .CodeMirror-merge .CodeMirror { height: 100%; }
+  .CodeMirror-linenumbers { background-color: #f8fafc; border-right: 1px solid #e2e8f0; }
+</style>
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/merge/merge.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/diff-match-patch@1.0.5/index.js"></script>
@@ -47,7 +93,7 @@
   }
 
   function init(){
-    status.textContent = 'Loading...';
+    status.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin text-primary-500"></i> Loading...';
     Promise.all([
       loadConflicts(),
       fetchBundle()
@@ -56,6 +102,10 @@
       var yours = bundle.yours || '';
       var theirs = bundle.theirs || '';
       var merged = bundle.merge || '';
+      
+      // Clean previous
+      root.innerHTML = '';
+      
       view = CodeMirror.MergeView(root, {
         value: merged,
         origLeft: yours,
@@ -65,28 +115,29 @@
         highlightDifferences: true,
         collapseIdentical: true,
         connect: 'align',
+        viewportMargin: Infinity
       });
-      status.textContent = '';
+      
+      status.innerHTML = '<span class="text-green-600"><i class="fa-solid fa-check"></i> Ready</span>';
       setTimeout(goNextDiff, 50);
-    }).catch(function(e){ status.textContent = e.message; });
+    }).catch(function(e){ status.innerHTML = '<span class="text-red-500">Error: ' + e.message + '</span>'; });
   }
 
   function postResolve(mode){
-    status.textContent = 'Applying ' + mode + ' ...';
+    status.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Applying ' + mode + '...';
     var fd = new FormData();
     fd.append('mode', mode);
     fd.append('files', file);
     fetch('/admin/jobs/' + jobId + '/resolve', { method: 'POST', body: fd })
       .then(function(r){ if(r.status===409) throw new Error('Job is resolving, please wait.'); return r.text(); })
       .then(function(){
-        status.textContent = 'Done.';
+        status.innerHTML = '<span class="text-green-600">Done</span>';
         try { window.opener && window.opener.location.reload(); } catch(_){ }
-        // If more files left, go next automatically
+        
+        // Next file logic
         if(indexInList >= 0 && conflicts.length > 0){
-          // reload list and redirect to next remaining conflict
           return loadConflicts().then(function(){
             var nextIndex = indexInList;
-            // if current file is resolved, it will drop from list; prefer same index
             if(nextIndex >= conflicts.length) nextIndex = conflicts.length - 1;
             if(nextIndex >= 0){
               var nextFile = conflicts[nextIndex];
@@ -94,12 +145,16 @@
                 location.href = '/admin/jobs/' + jobId + '/merge?file=' + encodeURIComponent(nextFile);
               } else if(conflicts.length > nextIndex+1) {
                 location.href = '/admin/jobs/' + jobId + '/merge?file=' + encodeURIComponent(conflicts[nextIndex+1]);
+              } else {
+                  // No more?
+                  alert('All conflicts visited in this session.');
+                  location.href = '/admin/jobs/' + jobId;
               }
             }
           });
         }
       })
-      .catch(function(e){ status.textContent = e.message; });
+      .catch(function(e){ status.innerHTML = '<span class="text-red-500">' + e.message + '</span>'; });
   }
 
   document.getElementById('btn-apply-merge').onclick = function(){ postResolve('merge'); }
@@ -108,11 +163,7 @@
   document.getElementById('btn-next').onclick = goNextDiff;
   document.getElementById('btn-prev').onclick = goPrevDiff;
 
-  // No keyboard shortcuts to avoid accidental operations
-
   init();
 })();
 </script>
 {% endblock %}
-
-
