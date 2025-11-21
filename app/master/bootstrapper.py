@@ -12,6 +12,12 @@ import sys
 
 logger = logging.getLogger("Bootstrapper")
 
+# Windows constants
+if sys.platform == 'win32':
+    CREATE_NO_WINDOW = 0x08000000
+else:
+    CREATE_NO_WINDOW = 0
+
 class Bootstrapper:
     def __init__(self, ssh_config: dict):
         self.ssh_host = ssh_config.get("host", "localhost")
@@ -48,16 +54,21 @@ class Bootstrapper:
                 
                 cmd = [sys.executable, agent_path, master_host, str(master_port), workspace]
                 
-                # Start process detached/background? 
-                # For local dev, subprocess.Popen is fine. It continues running after we return.
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.DEVNULL, 
-                    stderr=subprocess.DEVNULL,
-                    # On Windows, creationflags=subprocess.CREATE_NEW_CONSOLE might be needed 
-                    # if we want it fully detached, but for now standard Popen is ok.
-                    start_new_session=True if sys.platform != 'win32' else False
-                )
+                # Start process detached/background
+                # Different handling for Windows vs Unix
+                popen_kwargs = {
+                    'stdout': subprocess.DEVNULL,
+                    'stderr': subprocess.DEVNULL,
+                }
+                
+                if sys.platform == 'win32':
+                    # Windows: Use CREATE_NO_WINDOW to run in background
+                    popen_kwargs['creationflags'] = CREATE_NO_WINDOW
+                else:
+                    # Unix: Use start_new_session
+                    popen_kwargs['start_new_session'] = True
+                
+                process = subprocess.Popen(cmd, **popen_kwargs)
                 
                 logger.info(f"Local Agent started with PID {process.pid}")
                 return str(process.pid), agent_hint
@@ -79,9 +90,23 @@ class Bootstrapper:
             agent_code_b64 = base64.b64encode(agent_code.encode('utf-8')).decode('ascii')
             
             # Construct Remote Command
-            remote_cmd = f"""
-nohup python3 -c "import base64, sys; exec(base64.b64decode('{agent_code_b64}'))" {master_host} {master_port} {workspace} > /dev/null 2>&1 & echo $!
-"""
+            # Force bash execution to avoid csh/tcsh issues
+            # Use double quotes for the outer command to avoid quote nesting issues
+            remote_cmd = (
+                f'/bin/bash << "BASH_SCRIPT_EOF"\n'
+                f'TEMP_AGENT=/tmp/p4_agent_$$.py\n'
+                f'cat > $TEMP_AGENT << AGENT_EOF\n'
+                f'import base64\n'
+                f'import sys\n'
+                f'agent_code = base64.b64decode("{agent_code_b64}")\n'
+                f'exec(agent_code)\n'
+                f'AGENT_EOF\n'
+                f'python3 $TEMP_AGENT {master_host} {master_port} {workspace} > /tmp/agent_$$.log 2>&1 &\n'
+                f'AGENT_PID=$!\n'
+                f'rm -f $TEMP_AGENT\n'
+                f'echo $AGENT_PID\n'
+                f'BASH_SCRIPT_EOF\n'
+            )
             
             # Execute via SSH
             client = paramiko.SSHClient()
@@ -133,14 +158,36 @@ nohup python3 -c "import base64, sys; exec(base64.b64decode('{agent_code_b64}'))
                     
                     raise RuntimeError(error_msg) from auth_err
                 
+                # Log the command for debugging
+                logger.info(f"Executing remote command on {self.ssh_host}")
+                logger.debug(f"Command: {remote_cmd[:200]}...")  # Log first 200 chars
+                
                 stdin, stdout, stderr = client.exec_command(remote_cmd)
                 
-                pid = stdout.read().decode().strip()
-                err = stderr.read().decode().strip()
+                # Read output
+                pid_output = stdout.read().decode().strip()
+                err_output = stderr.read().decode().strip()
                 
-                if not pid:
-                    logger.error(f"Failed to start agent. Stderr: {err}")
-                    raise RuntimeError(f"Agent start failed: {err}")
+                # Log full output for debugging
+                logger.info(f"Remote stdout: {pid_output}")
+                if err_output:
+                    logger.warning(f"Remote stderr: {err_output}")
+                
+                # Extract PID (last line of output)
+                if pid_output:
+                    lines = pid_output.strip().split('\n')
+                    pid = lines[-1].strip()  # Last line should be the PID
+                else:
+                    pid = None
+                
+                if not pid or not pid.isdigit():
+                    error_details = f"Agent start failed.\n"
+                    error_details += f"Expected PID but got: {repr(pid_output)}\n"
+                    if err_output:
+                        error_details += f"Stderr: {err_output}\n"
+                    error_details += f"\nDebug: Check /tmp/agent_*.log on {self.ssh_host}"
+                    logger.error(error_details)
+                    raise RuntimeError(error_details)
                     
                 logger.info(f"SSH Agent started with PID {pid} on {self.ssh_host}")
                 return pid, agent_hint
