@@ -5,32 +5,30 @@ p4:
   password: ''  # SECURITY: Set via environment variable P4PASSWD
   bin: p4  # or /path/to/p4
 
-workspace_root: /path/to/workspace
+# Agent Configuration
+agent:
+  # The IP/Hostname of THIS machine (Master) that Agents should connect to.
+  # Ensure this is reachable from the remote machine.
+  master_host: 10.0.0.1  # <--- CHANGE THIS to your Master IP
+  master_port: 9090
 
-exec:
-  mode: local  # or 'ssh' for remote execution
-  ssh:
-    host: remote-host
-    user: username
-    port: 22
-    key_path: ~/.ssh/id_rsa
-    password: ''  # SECURITY: Set via P4_INTEG_SSH_PASSWORD or use key_path
-    shell: /bin/bash
-    login_shell: true
-    env_prelude: ''  # Optional: commands to source before running p4
-  workspace_root: /remote/path/to/workspace  # Required for SSH mode
+# SSH Configuration for Bootstrap (Agent Deployment)
+ssh:
+  host: remote-host  # Use 'localhost' for local execution
+  user: username
+  port: 22
+  # Use key_path or password (key preferred)
+  key_path: ~/.ssh/id_rsa
+  password: ''  # SECURITY: Set via P4_INTEG_SSH_PASSWORD
 
-p4w_password: ''  # SECURITY: Set via environment variable (for p4push prompts)
+# Workspace Configuration
+workspace:
+  root: /path/to/workspace
 
+# Specs & Defaults
 defaults:
   source: //depot/source/...
   target: //depot/target/...
-
-blocklist: []  # List of glob patterns or depot paths to block
-
-test_hook:
-  command: ''
-  args: []
 
 specs:
   example_spec:
@@ -38,12 +36,22 @@ specs:
     target: //depot/branch/...
     description: Example integration spec
 
+# Blocklist: patterns or depot paths to block
+blocklist: []
+
+# Test hooks before submit
+test_hook:
+  command: ''
+  args: []
+
+# Submit configuration
 submit:
   trial: false  # Set to true for trial mode by default
 
-features:
-  advanced_ui: true
+# P4Push password (for prompts)
+p4w_password: ''  # SECURITY: Set via environment variable
 
+# Logging
 logging:
   level: INFO
   file: data/p4_integ.log
@@ -53,14 +61,13 @@ logging:
 
 data_dir: data
 
-# Maximum number of jobs that can be queued (default: 100)
+# Maximum number of jobs that can be queued
 max_queue_size: 100
 
 # Auto-cleanup on error: revert files and delete changelist/shelf when job fails
 auto_cleanup_on_error: true
 
 # Environment initialization (customize for your environment)
-# Set enabled: false to skip environment initialization scripts
 env_init:
   enabled: true  # Set to false to skip environment initialization
   init_script: /proj/verif_release_ro/cbwa_initscript/current/cbwa_init.bash
@@ -68,10 +75,11 @@ env_init:
   name_check_tool: /tool/aticad/1.0/src/perforce/name_check_file_list
 
 # Auto-resolve configuration
-# The auto-resolve thread checks jobs in needs_resolve status and auto-continues
-# to submit when conflicts are cleared (will not interfere with manual operations)
 auto_resolve:
-  enabled: true   # Enable automatic resolve checking
-  interval: 60    # Check interval in seconds
-  auto_submit: true  # Auto-submit when conflicts are cleared (both auto-resolve and manual rescan)
+  enabled: true      # Enable automatic resolve checking
+  interval: 60       # Check interval in seconds
+  auto_submit: true  # Auto-submit when conflicts cleared
 
+# Features
+features:
+  advanced_ui: true
