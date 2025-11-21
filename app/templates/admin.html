@@ -1,412 +1,126 @@
 {% extends "layout.html" %}
+
 {% block content %}
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<div class="space-y-6">
   
-  <!-- Create Job Form -->
-  <div class="lg:col-span-1 space-y-6">
-    <form method="post" action="/admin/jobs/create" class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 transition-all hover:shadow-md">
-      <div class="flex items-center gap-2 mb-6 border-b border-slate-100 pb-4">
-        <div class="p-2 bg-primary-50 rounded-lg text-primary-600">
-          <i class="fa-solid fa-plus"></i>
+  <!-- Header & Stats -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">Dashboard</h1>
+      <p class="text-sm text-slate-500 mt-1">Overview of all integration jobs</p>
+    </div>
+    
+    <!-- Quick Stats -->
+    <div class="flex gap-4">
+      {% set running_count = jobs | selectattr('stage', 'notin', ['DONE', 'ERROR']) | list | length %}
+      {% set done_count = jobs | selectattr('stage', 'equalto', 'DONE') | list | length %}
+      
+      <div class="bg-white px-4 py-2 rounded-lg shadow-sm border border-slate-200 flex items-center gap-3">
+        <div class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+        <div>
+          <div class="text-xs text-slate-500 font-medium uppercase tracking-wider">Running</div>
+          <div class="text-lg font-bold text-slate-900">{{ running_count }}</div>
         </div>
-        <h2 class="text-lg font-semibold text-slate-800">New Integration</h2>
       </div>
       
-      <div class="space-y-5">
+      <div class="bg-white px-4 py-2 rounded-lg shadow-sm border border-slate-200 flex items-center gap-3">
+        <div class="w-2 h-2 rounded-full bg-green-500"></div>
         <div>
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Branch Spec <span class="text-slate-400 font-normal normal-case">(Optional)</span></label>
-          {% set specs = (config.get('specs', {}) if config else {}) %}
-          <div class="relative">
-            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <i class="fa-solid fa-code-branch text-slate-400 text-xs"></i>
-            </div>
-            <input list="spec-suggestions" type="text" name="spec" class="block w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors bg-slate-50 focus:bg-white" placeholder="e.g. gfxip_unified_main_to_orion" />
-          </div>
-          <datalist id="spec-suggestions">
-            {% for name, sp in specs.items() %}
-              <option value="{{ name }}">{{ name }}</option>
-            {% endfor %}
-          </datalist>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Source Path</label>
-          {% set defaults = (config.get('defaults', {}) if config else {}) %}
-          <div class="relative">
-            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <i class="fa-solid fa-folder-tree text-slate-400 text-xs"></i>
-            </div>
-            <input type="text" name="source" class="block w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors bg-slate-50 focus:bg-white" value="{{ defaults.get('source','') }}" placeholder="//depot/..." />
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Target Path</label>
-          <div class="relative">
-            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <i class="fa-solid fa-bullseye text-slate-400 text-xs"></i>
-            </div>
-            <input type="text" name="target" class="block w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors bg-slate-50 focus:bg-white" value="{{ defaults.get('target','') }}" placeholder="//depot/..." />
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Changelist <span class="text-slate-400 font-normal normal-case">(Optional)</span></label>
-          <div class="relative">
-            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <i class="fa-solid fa-list-ol text-slate-400 text-xs"></i>
-            </div>
-            <input type="text" name="changelist" class="block w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors bg-slate-50 focus:bg-white" placeholder="e.g. 123456" />
-          </div>
-        </div>
-
-        <div class="flex items-center">
-          <input id="trial-mode" type="checkbox" name="trial" value="1" class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-slate-300 rounded transition-colors" />
-          <label for="trial-mode" class="ml-2 block text-sm text-slate-700 select-none">
-            Run in <span class="font-semibold text-primary-600">Trial Mode</span> (dry-run)
-          </label>
+          <div class="text-xs text-slate-500 font-medium uppercase tracking-wider">Completed</div>
+          <div class="text-lg font-bold text-slate-900">{{ done_count }}</div>
         </div>
       </div>
-
-      <div class="mt-8 flex flex-col gap-3">
-        <button class="w-full flex justify-center items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all active:scale-[0.98]" type="submit">
-          <i class="fa-solid fa-play mr-2"></i> Create Job
-        </button>
-        
-        <div class="grid grid-cols-2 gap-3">
-          <button class="w-full flex justify-center items-center px-4 py-2 border border-slate-200 rounded-lg shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-200 transition-all" type="button" id="btnCheckHealth">
-            <i class="fa-solid fa-stethoscope mr-2 text-slate-400"></i> Health
-          </button>
-          <a href="/admin/specs" class="w-full flex justify-center items-center px-4 py-2 border border-slate-200 rounded-lg shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-200 transition-all">
-            <i class="fa-solid fa-cog mr-2 text-slate-400"></i> Specs
-          </a>
-        </div>
-      </div>
-    </form>
+    </div>
   </div>
 
-  <!-- Jobs List -->
-  <div class="lg:col-span-2 space-y-6">
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
-      <div class="p-5 border-b border-slate-100 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div class="flex items-center gap-2">
-           <div class="p-2 bg-slate-50 rounded-lg text-slate-600">
-            <i class="fa-solid fa-list-check"></i>
-          </div>
-          <h2 class="text-lg font-semibold text-slate-800">Recent Jobs</h2>
-        </div>
-
-        {% set feats = (config.get('features', {}) if config else {}) %}
-        {% if feats.get('advanced_ui') %}
-        <div class="flex items-center gap-2 w-full sm:w-auto">
-           <div class="relative flex-grow sm:flex-grow-0">
-             <select id="filter-status" class="appearance-none block w-full pl-3 pr-8 py-1.5 border border-slate-200 rounded-md text-xs font-medium text-slate-600 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 transition-colors cursor-pointer">
-               <option value="">All Statuses</option>
-             </select>
-             <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
-               <i class="fa-solid fa-chevron-down text-[10px]"></i>
-             </div>
-           </div>
-           <div class="relative flex-grow">
-             <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
-               <i class="fa-solid fa-search text-slate-400 text-xs"></i>
-             </div>
-             <input id="filter-q" class="block w-full pl-8 pr-3 py-1.5 border border-slate-200 rounded-md text-xs placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 transition-colors" placeholder="Search..." />
-           </div>
-        </div>
-        {% endif %}
+  <!-- Main Job List -->
+  <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    {% if not jobs %}
+    <div class="p-12 text-center">
+      <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+        <i class="fa-solid fa-inbox text-slate-300 text-2xl"></i>
       </div>
-      
-      {% if feats.get('advanced_ui') %}
-      <div id="dash" class="bg-slate-50 px-5 py-2 border-b border-slate-100 text-xs font-medium text-slate-500 flex items-center gap-4 overflow-x-auto whitespace-nowrap scrollbar-hide"></div>
-      {% endif %}
-
-      <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-slate-100">
-          <thead class="bg-slate-50">
-            <tr>
-              <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider sortable hover:text-slate-700 hover:bg-slate-100 transition-colors select-none group" data-k="id">
-                ID <i class="fa-solid fa-sort ml-1 opacity-0 group-hover:opacity-50 text-[10px]"></i>
-              </th>
-              <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider sortable hover:text-slate-700 hover:bg-slate-100 transition-colors select-none group" data-k="status">
-                Status <i class="fa-solid fa-sort ml-1 opacity-0 group-hover:opacity-50 text-[10px]"></i>
-              </th>
-              <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider sortable hover:text-slate-700 hover:bg-slate-100 transition-colors select-none group" data-k="changelist">
-                CL <i class="fa-solid fa-sort ml-1 opacity-0 group-hover:opacity-50 text-[10px]"></i>
-              </th>
-              <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider sortable hover:text-slate-700 hover:bg-slate-100 transition-colors select-none group" data-k="conflicts_len">
-                Conf <i class="fa-solid fa-sort ml-1 opacity-0 group-hover:opacity-50 text-[10px]"></i>
-              </th>
-              <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider sortable hover:text-slate-700 hover:bg-slate-100 transition-colors select-none group" data-k="updated_at">
-                Updated <i class="fa-solid fa-sort ml-1 opacity-0 group-hover:opacity-50 text-[10px]"></i>
-              </th>
-              <th class="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider"></th>
-            </tr>
-          </thead>
-          <tbody id="jobs-body" class="bg-white divide-y divide-slate-100">
-            <!-- JS Populated -->
-            {% for job in jobs %}
-            <tr class="hover:bg-slate-50/50 transition-colors group">
-              <td class="px-5 py-3 whitespace-nowrap">
-                <code class="text-xs font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{{ job.id[:8] }}</code>
-              </td>
-              <td class="px-5 py-3 whitespace-nowrap">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                  {% if job.status in ['running', 'integrate', 'resolve'] %} bg-blue-50 text-blue-700 border border-blue-100
-                  {% elif job.status == 'done' %} bg-green-50 text-green-700 border border-green-100
-                  {% elif job.status in ['error', 'failed'] %} bg-red-50 text-red-700 border border-red-100
-                  {% elif job.status == 'needs_resolve' %} bg-amber-50 text-amber-700 border border-amber-100
-                  {% else %} bg-slate-100 text-slate-600 border border-slate-200 {% endif %}">
-                  {{ job.status }}
-                  {% if job.stage %}<span class="ml-1 opacity-75 font-normal">({{ job.stage }})</span>{% endif %}
-                </span>
-                {% if job.payload and job.payload.trial %}
-                  <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-100">trial</span>
-                {% endif %}
-              </td>
-              <td class="px-5 py-3 whitespace-nowrap text-sm text-slate-600">
-                {{ job.changelist or '-' }}
-              </td>
-              <td class="px-5 py-3 whitespace-nowrap text-sm text-slate-600">
-                {% if job.conflicts %}
-                  <span class="text-amber-600 font-medium">{{ job.conflicts|length }}</span>
-                {% else %}
-                  <span class="text-slate-300">-</span>
-                {% endif %}
-              </td>
-              <td class="px-5 py-3 whitespace-nowrap text-xs text-slate-500">
-                <span class="ts" data-ts="{{ job.updated_at or 0 }}"></span>
-              </td>
-              <td class="px-5 py-3 whitespace-nowrap text-right text-sm font-medium">
-                <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <a href="/admin/jobs/{{ job.id }}" class="text-primary-600 hover:text-primary-900 bg-primary-50 hover:bg-primary-100 p-1.5 rounded-md transition-colors" title="View Details">
-                    <i class="fa-solid fa-arrow-right"></i>
-                  </a>
-                  {% if is_admin and job.status in ['queued','running','needs_resolve','blocked','ready_to_submit'] %}
-                  <form method="post" action="/admin/jobs/{{ job.id }}/cancel" class="inline">
-                    <button class="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 p-1.5 rounded-md transition-colors" type="submit" title="Cancel Job">
-                      <i class="fa-solid fa-times"></i>
-                    </button>
-                  </form>
-                  {% endif %}
-                </div>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      
-      {% if not jobs %}
-      <div class="p-12 text-center">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-50 mb-4">
-          <i class="fa-solid fa-inbox text-slate-300 text-2xl"></i>
-        </div>
-        <h3 class="text-slate-500 font-medium">No jobs found</h3>
-        <p class="text-slate-400 text-sm mt-1">Create a new integration job to get started.</p>
-      </div>
-      {% endif %}
+      <h3 class="text-lg font-medium text-slate-900">No jobs found</h3>
+      <p class="text-slate-500 mt-1 mb-6">Get started by creating your first integration job.</p>
+      <a href="/admin/submit" class="inline-flex items-center px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm shadow-primary-500/30">
+        <i class="fa-solid fa-plus mr-2"></i> Create Job
+      </a>
     </div>
+    {% else %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold">
+            <th class="px-6 py-4 w-16">ID</th>
+            <th class="px-6 py-4">Job Description</th>
+            <th class="px-6 py-4">Branch / Path</th>
+            <th class="px-6 py-4">Status</th>
+            <th class="px-6 py-4 text-right">Last Update</th>
+            <th class="px-6 py-4 text-right">Action</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for job in jobs %}
+          <tr class="hover:bg-slate-50/80 transition-colors group">
+            <td class="px-6 py-4 font-mono text-xs text-slate-400">
+              {{ job.job_id[:8] }}
+            </td>
+            <td class="px-6 py-4">
+              <div class="font-medium text-slate-900">{{ job.spec.description or 'No description' }}</div>
+              <div class="text-xs text-slate-500 mt-0.5">CL: {{ job.spec.changelist }}</div>
+            </td>
+            <td class="px-6 py-4">
+              <div class="flex flex-col gap-1 text-xs">
+                <span class="inline-flex items-center gap-1.5 text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 w-fit">
+                  <i class="fa-solid fa-code-branch text-[10px]"></i> {{ job.spec.branch_spec }}
+                </span>
+                <span class="text-slate-400 truncate max-w-[200px]" title="{{ job.spec.path }}">{{ job.spec.path }}</span>
+              </div>
+            </td>
+            <td class="px-6 py-4">
+              {% set status_colors = {
+                'DONE': 'bg-green-100 text-green-700 border-green-200',
+                'ERROR': 'bg-red-100 text-red-700 border-red-200',
+                'NEEDS_RESOLVE': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+                'INIT': 'bg-slate-100 text-slate-700 border-slate-200'
+              } %}
+              {% set default_color = 'bg-blue-100 text-blue-700 border-blue-200' %}
+              
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border {{ status_colors.get(job.stage, default_color) }}">
+                {% if job.stage not in ['DONE', 'ERROR', 'NEEDS_RESOLVE', 'INIT'] %}
+                  <span class="w-1.5 h-1.5 rounded-full bg-current mr-1.5 animate-pulse"></span>
+                {% endif %}
+                {{ job.stage }}
+              </span>
+            </td>
+            <td class="px-6 py-4 text-right text-slate-500 tabular-nums text-xs">
+              <div class="ts" data-ts="{{ job.updated_at_ts }}">
+                {{ job.updated_at }}
+              </div>
+            </td>
+            <td class="px-6 py-4 text-right">
+              <a href="/jobs/{{ job.job_id }}" class="text-primary-600 hover:text-primary-700 font-medium text-xs hover:underline group-hover:translate-x-1 transition-transform inline-block">
+                View Details <i class="fa-solid fa-arrow-right ml-0.5"></i>
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
   </div>
 </div>
 
+<!-- Add simple timestamp parser helper if needed by template -->
 <script>
-  (function(){
-    var ADVANCED = {{ (config.get('features',{}).get('advanced_ui', False) if config else False) | tojson }};
-    var jobsData = [];
-    var prevMap = {};
-    var sortKey = 'updated_at';
-    var sortDir = 'desc';
-    var statusSet = new Set();
-    var filterStatus = '';
-    var filterQ = '';
-
-    // Helper for stats
-    function fmt(obj){ return Object.entries(obj).map(([k,v]) => `<span class="font-mono text-slate-700">${k}:</span> ${v}`).join('<span class="mx-2 text-slate-300">|</span>'); }
-
-    function load(){ 
-      if(!ADVANCED) return; 
-      fetch('/api/metrics').then(r=>r.json()).then(function(m){
-        var el = document.getElementById('dash'); if(!el) return;
-        var q = m.queues||{}; var s = m.statuses||{}; var f = m.failures||{};
-        el.innerHTML = `
-          <div class="flex items-center gap-2"><i class="fa-solid fa-layer-group text-slate-400"></i> ${fmt(q)}</div>
-          <div class="h-4 w-px bg-slate-200 mx-2"></div>
-          <div class="flex items-center gap-2"><i class="fa-solid fa-info-circle text-slate-400"></i> ${fmt(s)}</div>
-        `;
-      }).catch(function(_){}); 
+  // Simple inline JS to convert ISO strings to timestamp for the relative time helper
+  document.querySelectorAll('.ts').forEach(el => {
+    const iso = el.textContent.trim();
+    if(iso && !el.getAttribute('data-ts')) {
+      const ts = Math.floor(new Date(iso).getTime() / 1000);
+      if(!isNaN(ts)) el.setAttribute('data-ts', ts);
     }
-    load(); setInterval(load, 5000);
-
-    function getStatusBadge(status, stage) {
-      let classes = "bg-slate-100 text-slate-600 border border-slate-200";
-      if(['running', 'integrate', 'resolve'].includes(status)) classes = "bg-blue-50 text-blue-700 border border-blue-100";
-      else if(status === 'done') classes = "bg-green-50 text-green-700 border border-green-100";
-      else if(['error', 'failed'].includes(status)) classes = "bg-red-50 text-red-700 border border-red-100";
-      else if(status === 'needs_resolve') classes = "bg-amber-50 text-amber-700 border border-amber-100";
-
-      return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${classes}">
-        ${status}
-        ${stage ? `<span class="ml-1 opacity-75 font-normal">(${stage})</span>` : ''}
-      </span>`;
-    }
-
-    function rowHtml(j, changed){
-      var detail = '/admin/jobs/' + j.id;
-      var cls = changed ? 'bg-blue-50/50 transition-colors duration-1000' : 'hover:bg-slate-50/50 transition-colors group';
-      
-      var trialBadge = (j.payload && j.payload.trial) ? 
-        `<span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-100">trial</span>` : '';
-
-      var conflicts = (j.conflicts && j.conflicts.length) ? 
-        `<span class="text-amber-600 font-medium">${j.conflicts.length}</span>` : `<span class="text-slate-300">-</span>`;
-
-      // Actions logic matching jinja
-      var showCancel = ['queued','running','needs_resolve','blocked','ready_to_submit'].includes(j.status);
-      
-      return `<tr class="${cls}">
-        <td class="px-5 py-3 whitespace-nowrap">
-          <code class="text-xs font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">${j.id.substring(0,8)}</code>
-        </td>
-        <td class="px-5 py-3 whitespace-nowrap">
-          ${getStatusBadge(j.status, j.stage)}
-          ${trialBadge}
-        </td>
-        <td class="px-5 py-3 whitespace-nowrap text-sm text-slate-600">${j.changelist || '-'}</td>
-        <td class="px-5 py-3 whitespace-nowrap text-sm text-slate-600">${conflicts}</td>
-        <td class="px-5 py-3 whitespace-nowrap text-xs text-slate-500">
-          ${window.formatRelativeTime ? window.formatRelativeTime(Date.now()/1000 - (j.updated_at||0)) : '-'}
-        </td>
-        <td class="px-5 py-3 whitespace-nowrap text-right text-sm font-medium">
-          <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            <a href="${detail}" class="text-primary-600 hover:text-primary-900 bg-primary-50 hover:bg-primary-100 p-1.5 rounded-md transition-colors" title="View Details">
-              <i class="fa-solid fa-arrow-right"></i>
-            </a>
-            ${showCancel ? `
-            <form method="post" action="/admin/jobs/${j.id}/cancel" class="inline" onsubmit="return confirm('Cancel job?');">
-              <button class="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 p-1.5 rounded-md transition-colors" type="submit" title="Cancel Job">
-                <i class="fa-solid fa-times"></i>
-              </button>
-            </form>` : ''}
-          </div>
-        </td>
-      </tr>`;
-    }
-
-    function renderJobs(list){
-      var tb = document.getElementById('jobs-body'); if(!tb) return;
-      var html = list.map(function(j){
-        var prev = prevMap[j.id];
-        var changed = false;
-        if(prev){
-          if(prev.status!==j.status || prev.stage!==j.stage || (prev.changelist||'')!==(j.changelist||'') || ((prev.conflicts||[]).length)!==((j.conflicts||[]).length) || prev.updated_at!==j.updated_at) changed = true;
-        }
-        return rowHtml(j, changed);
-      }).join('');
-      tb.innerHTML = html;
-      
-      // Remove highlights
-      setTimeout(function(){ 
-        tb.querySelectorAll('tr.bg-blue-50\\/50').forEach(e => {
-          e.classList.remove('bg-blue-50/50');
-          e.classList.add('hover:bg-slate-50/50', 'group');
-        }); 
-      }, 1000);
-      
-      prevMap = {};
-      list.forEach(function(j){ prevMap[j.id] = j; });
-    }
-
-    function applyFilter(list){
-      return list.filter(function(j){
-        if(filterStatus && String(j.status)!==filterStatus) return false;
-        if(filterQ){
-          var q = filterQ.toLowerCase();
-          var p = j.payload||{};
-          var src = String(p.source||''); var tgt = String(p.target||'');
-          var hay = [j.id||'', j.status||'', j.stage||'', src, tgt].join(' ').toLowerCase();
-          if(hay.indexOf(q)===-1) return false;
-        }
-        return true;
-      });
-    }
-
-    function applySort(list){
-      var arr = list.slice();
-      arr.forEach(function(j){ j.conflicts_len = (j.conflicts&&j.conflicts.length)||0; });
-      arr.sort(function(a,b){
-        var va = a[sortKey]; var vb = b[sortKey];
-        if(va==null) va = ''; if(vb==null) vb = '';
-        if(va<vb) return sortDir==='asc'? -1: 1;
-        if(va>vb) return sortDir==='asc'? 1: -1;
-        return 0;
-      });
-      return arr;
-    }
-
-    function refresh(){
-      var list = applySort(applyFilter(jobsData));
-      renderJobs(list);
-    }
-
-    function fetchJobs(){ 
-      fetch('/api/jobs').then(r=>r.json()).then(function(list){ 
-        jobsData = list||[]; 
-        statusSet = new Set(); 
-        jobsData.forEach(j => { if(j.status) statusSet.add(String(j.status)); });
-        
-        var sel = document.getElementById('filter-status'); 
-        if(sel && sel.options.length<=1){ 
-          var opts = Array.from(statusSet).sort(); 
-          var html = '<option value="">All Statuses</option>' + opts.map(s => `<option value="${s}">${s}</option>`).join(''); 
-          sel.innerHTML = html; 
-        }
-        refresh();
-      }).catch(function(_){}); 
-    }
-
-    // Init
-    fetchJobs();
-
-    // Filters & Sorting
-    var sel = document.getElementById('filter-status');
-    if(sel){ sel.addEventListener('change', function(){ filterStatus = sel.value||''; refresh(); }); }
-    var q = document.getElementById('filter-q');
-    if(q){ q.addEventListener('input', function(){ filterQ = q.value||''; refresh(); }); }
-
-    document.querySelectorAll('th.sortable').forEach(th => {
-      th.style.cursor='pointer'; 
-      th.addEventListener('click', function(){ 
-        var k = th.getAttribute('data-k'); 
-        if(!k) return; 
-        if(sortKey===k){ sortDir = (sortDir==='asc'?'desc':'asc'); } 
-        else { sortKey = k; sortDir = 'asc'; } 
-        
-        // Update icon
-        document.querySelectorAll('th.sortable i').forEach(i => { i.className = 'fa-solid fa-sort ml-1 opacity-0 group-hover:opacity-50 text-[10px]'; });
-        var icon = th.querySelector('i');
-        if(icon) icon.className = `fa-solid fa-sort-${sortDir==='asc'?'up':'down'} ml-1 opacity-100 text-primary-500 text-[10px]`;
-        
-        refresh(); 
-      }); 
-    });
-
-    // SSE
-    try{
-      var es = ADVANCED ? new EventSource('/api/stream') : null;
-      var last = 0; var pending = false;
-      function trigger(){
-        var now = Date.now();
-        if (now - last > 1500) { last = now; fetchJobs(); return; }
-        if (!pending) { pending = true; setTimeout(function(){ pending = false; fetchJobs(); }, 800); }
-      }
-      if(es){ es.onmessage = function(_ev){ trigger(); }; }
-    }catch(_){}
-    
-    // Health Modal Trigger
-    var b = document.getElementById('btnCheckHealth');
-    if(b){ b.addEventListener('click', function(){ if(window.__openHealthModal) window.__openHealthModal(); }); }
-
-  })();
+  });
 </script>
 {% endblock %}

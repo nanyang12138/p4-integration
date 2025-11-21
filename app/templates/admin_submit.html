@@ -7,53 +7,11 @@
       <h2 class="text-2xl font-bold text-slate-800 tracking-tight">New Integration Job</h2>
       <p class="text-sm text-slate-500 mt-1">Configure source, target, and changelist.</p>
     </div>
-    {% set cfg = (config or {}) %}
-    {% set exec = (cfg.get('exec', {}) if cfg else {}) %}
-    <div class="flex flex-col items-end">
-      <span class="text-xs text-slate-400 uppercase tracking-wider font-medium mb-1">Execution Mode</span>
-      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
-        {{ exec.get('mode','local') or 'local' }}
-      </span>
-    </div>
   </div>
 
   <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-    
-    <!-- Step 1 Summary -->
-    <div class="bg-slate-50 px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-sm font-bold border border-green-200">
-          <i class="fa-solid fa-check"></i>
-        </div>
-        <div>
-          <h3 class="text-sm font-medium text-slate-900">Step 1: Environment</h3>
-          <div class="text-xs text-slate-500 flex items-center gap-2">
-             {% set ssh = (exec.get('ssh', {}) if exec else {}) %}
-             <span>{% if exec.get('mode') == 'ssh' %}SSH: {{ ssh.get('user','') }}@{{ ssh.get('host','') }}{% else %}Local Host{% endif %}</span>
-          </div>
-        </div>
-      </div>
-      <div class="flex gap-2">
-        <button id="btnTest" type="button" class="text-xs font-medium text-primary-600 hover:text-primary-800 px-3 py-1.5 rounded border border-primary-200 bg-primary-50 hover:bg-primary-100 transition-colors">
-          Test Connection
-        </button>
-        <a href="/admin/exec" class="text-xs font-medium text-slate-600 hover:text-slate-800 px-3 py-1.5 rounded border border-slate-200 bg-white hover:bg-slate-50 transition-colors">
-          Change
-        </a>
-      </div>
-    </div>
-    <div id="testResult" class="hidden bg-slate-100 px-6 py-2 text-xs border-b border-slate-100"></div>
-
-    <!-- Step 2 Form -->
     <div class="p-6">
-      <div class="flex items-center gap-3 mb-6">
-        <div class="w-8 h-8 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center text-sm font-bold border border-primary-200 shadow-sm">
-          2
-        </div>
-        <h3 class="text-lg font-medium text-slate-900">Job Details</h3>
-      </div>
-
-      <form method="post" action="/admin/jobs/create" class="space-y-6">
+      <form method="post" action="/admin/submit" class="space-y-6">
         
         <!-- Branch Spec -->
         <div>
@@ -63,7 +21,7 @@
             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <i class="fa-solid fa-code-branch text-slate-400 text-sm"></i>
             </div>
-            <input id="specInput" list="spec-suggestions" type="text" name="spec" class="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-md focus:ring-primary-500 focus:border-primary-500 sm:text-sm" placeholder="e.g. gfxip_unified_main_to_orion" />
+            <input id="specInput" list="spec-suggestions" type="text" name="branch_spec" class="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-md focus:ring-primary-500 focus:border-primary-500 sm:text-sm" placeholder="e.g. gfxip_unified_main_to_orion" />
           </div>
           <datalist id="spec-suggestions">
             {% for name, sp in specs.items() %}
@@ -111,19 +69,32 @@
           </p>
         </div>
 
-        <!-- Trial Checkbox -->
-        <div class="relative flex items-start">
-          <div class="flex items-center h-5">
-            <input id="trial" name="trial" type="checkbox" value="1" class="focus:ring-primary-500 h-4 w-4 text-primary-600 border-slate-300 rounded">
+        <!-- Workspace -->
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Workspace</label>
+          {% set ws = (config.get('workspace', {}) if config else {}) %}
+          <div class="relative">
+             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <i class="fa-solid fa-laptop-code text-slate-400 text-sm"></i>
+            </div>
+            <input type="text" name="workspace" class="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-md focus:ring-primary-500 focus:border-primary-500 sm:text-sm" value="{{ ws.get('root','') }}" placeholder="/path/to/workspace" required />
           </div>
-          <div class="ml-3 text-sm">
-            <label for="trial" class="font-medium text-slate-700">Trial Run (Dry Run)</label>
-            <p class="text-slate-500">Performs integration and resolve logic but uses <code>p4push -trial</code> (no permanent changes).</p>
+        </div>
+
+        <!-- Description -->
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <i class="fa-solid fa-align-left text-slate-400 text-sm"></i>
+            </div>
+            <input type="text" name="description" class="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-md focus:ring-primary-500 focus:border-primary-500 sm:text-sm" placeholder="Brief description of this job" />
           </div>
         </div>
 
         <!-- Submit Button -->
-        <div class="pt-4 border-t border-slate-100 flex justify-end">
+        <div class="pt-4 border-t border-slate-100 flex justify-end gap-3">
+          <a href="/admin" class="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">Cancel</a>
           <button id="btnCreate" type="submit" class="inline-flex justify-center py-2.5 px-6 border border-transparent shadow-sm text-sm font-medium rounded-lg text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all transform active:scale-[0.98]">
             <i class="fa-solid fa-play mr-2"></i> Start Integration
           </button>
@@ -173,45 +144,6 @@
     spec.addEventListener('input', update);
     update();
   }
-
-  // Test Connection Logic
-  function testConn(){
-    var el = document.getElementById('testResult'); 
-    if(el) { 
-      el.classList.remove('hidden'); 
-      el.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin mr-2 text-primary-500"></i> Testing connection...'; 
-    }
-    
-    if(window.__openHealthModal) {
-      window.__openHealthModal().then(function(res){
-        var data = (res && res.data) || {}; var ok = !!(res && res.ok);
-        var el = document.getElementById('testResult'); if(!el) return;
-        
-        if(ok) {
-          el.innerHTML = '<span class="text-green-600 font-medium"><i class="fa-solid fa-check-circle mr-1"></i> Connection Healthy</span> <span class="text-slate-400 mx-2">|</span> <span class="text-slate-500 text-xs">Mode: ' + (data.exec_mode||'?') + '</span>';
-        } else {
-          el.innerHTML = '<span class="text-red-600 font-medium"><i class="fa-solid fa-times-circle mr-1"></i> Connection Failed</span> <span class="text-slate-400 mx-2">|</span> <span class="text-red-500 text-xs">' + (data.error || 'Unknown error') + '</span>';
-        }
-        
-        var btnCreate = document.getElementById('btnCreate'); 
-        if(btnCreate){ 
-           if(!ok) {
-             btnCreate.disabled = true;
-             btnCreate.classList.add('opacity-50', 'cursor-not-allowed');
-             btnCreate.title = 'Fix connection issues first';
-           } else {
-             btnCreate.disabled = false;
-             btnCreate.classList.remove('opacity-50', 'cursor-not-allowed');
-             btnCreate.title = '';
-           }
-        }
-      });
-    }
-  }
-  
-  var bTest = document.getElementById('btnTest'); 
-  if(bTest) bTest.addEventListener('click', testConn);
-
 })();
 </script>
 {% endblock %}
