@@ -1,222 +1,286 @@
 # P4 Integration Service
 
-> Automated Perforce integration service with web UI - handles merge, conflict resolution, and controlled submit
+> Automated Perforce integration service with Master-Agent architecture for distributed execution
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![Flask](https://img.shields.io/badge/flask-2.2.5-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-A lightweight Flask service to orchestrate Perforce (p4) integration, conflict resolution, and controlled submit via an admin UI or API.
+A distributed Perforce integration service using Master-Agent architecture with event-driven state machine for reliable, scalable P4 operations.
+
+## 🚀 What's New: Master-Agent Architecture
+
+### Key Improvements
+- **Event-Driven State Machine**: Replaced SSH blocking with asynchronous event-based execution
+- **Reverse Connection**: Agents connect to Master (firewall-friendly, no inbound ports needed)
+- **Real-time Status**: Live status updates via TCP socket instead of PID polling
+- **Auto-deployment**: Master automatically deploys Agent via SSH or local process
+- **Cross-platform**: Master on Windows, Agents on Linux/Unix
+- **Robust Error Handling**: Detailed connection failure diagnostics
 
 ## Highlights
 
-- 🆔 **Human-friendly Job IDs** - `INT-20251029-001` instead of UUIDs
-- ⚡ **10x Performance** - In-memory caching with lazy writes
-- 🔄 **Smart Caching** - 50% fewer P4 calls with intelligent cache
-- 🎨 **Modern UI** - Clean, streamlined interface
-- 📝 **Auto-formatting** - Standardized changelist descriptions
-- 🌐 **SSH Support** - Run P4 commands on remote Linux hosts
+- 🏗️ **Master-Agent Architecture** - Distributed execution with central control
+- ⚡ **Event-Driven** - Non-blocking, asynchronous job execution
+- 🔄 **Auto-Deploy** - Master automatically deploys and starts Agents
+- 📡 **Real-time Updates** - Live status via TCP socket communication
+- 🆔 **Human-friendly IDs** - `INT-20251029-001` format
+- 🎯 **Smart Resolution** - Two-pass auto-merge with manual support
+- 🎨 **Modern UI** - Clean, responsive interface with Tailwind CSS
+
+## Architecture Overview
+
+```
+┌─────────────────┐          ┌─────────────────┐
+│   Master (Web)  │          │   Agent (P4)    │
+│                 │          │                 │
+│  ┌───────────┐  │          │  ┌───────────┐  │
+│  │   Flask   │  │          │  │  P4 CLI   │  │
+│  │    UI     │  │          │  │ Executor  │  │
+│  └─────┬─────┘  │          │  └─────▲─────┘  │
+│        │        │          │        │        │
+│  ┌─────▼─────┐  │  TCP     │  ┌────┴──────┐  │
+│  │   State   │◄─┼──────────┼─►│   Agent   │  │
+│  │  Machine  │  │  9090    │  │   Core    │  │
+│  └───────────┘  │          │  └───────────┘  │
+│                 │          │                 │
+│  Windows/Linux  │          │  Linux/Unix     │
+└─────────────────┘          └─────────────────┘
+```
 
 ## Features
 
 ### Core Functionality
-- 🔄 **Automated Integration**: Create integration jobs with source/target or branch specs
-- 🔍 **Conflict Detection**: Automatic conflict detection and resolution assistance
-- 🎯 **Smart Resolution**: Two-pass auto-merge with manual resolution support
-- 🔐 **Security**: Blocklist checks and optional test hooks before submit
-- 🌐 **Flexible Execution**: Local or Remote (SSH) execution modes
-- 📊 **Job Tracking**: Process tracking, cancellation, and kill capabilities
+- 🔄 **Automated Integration**: Create jobs with source/target or branch specs
+- 🎯 **Smart Conflict Resolution**: Two-pass auto-merge with manual support
+- 📊 **Event-Driven State Machine**: SYNC → INTEGRATE → RESOLVE → SUBMIT → DONE
+- 🌐 **Distributed Execution**: Run P4 commands on remote machines
+- 🔐 **Security**: Blocklist checks and test hooks before submit
 
-### Recent Improvements (2025-10-29)
-- ✨ **Readable Job IDs**: Human-friendly `INT-YYYYMMDD-NNN` format
-- ⚡ **Performance**: 10x faster storage with in-memory cache and lazy writes
-- 🎨 **Clean UI**: Streamlined interface with only essential controls
-- 📝 **Better Descriptions**: Standardized changelist descriptions with proper formatting
-- ⏱️ **Smart Timestamps**: Relative time display ("2 min ago")
-- 🔄 **Intelligent Caching**: Reduces redundant P4 calls by 50%
-- 🧹 **Code Quality**: Unified logging, eliminated code duplication
+### Master-Agent Communication
+- **Reverse Connection**: Agents initiate connection to Master
+- **JSON Protocol**: Line-based JSON messages
+- **Command Types**: EXEC_CMD, KILL_CMD, SHUTDOWN
+- **Event Types**: LOG, CMD_DONE, ERROR, HEARTBEAT
+- **Auto-reconnect**: Agents retry connection on network failures
 
-### Advanced Features
-- 🔁 **Auto-resolve**: Background thread automatically continues when conflicts are cleared
-- 🔒 **Concurrency Safe**: Job-level locks prevent race conditions
-- 🎚️ **Queue Management**: Configurable queue size limits
-- 📡 **Real-time Updates**: SSE (Server-Sent Events) for live job status
+## Quick Start
 
-## Quickstart (Local)
-1. Install Python 3.10+ and `p4` CLI on the server. Ensure the service user has workspace access.
-2. Copy `config.yaml.example` to `config.yaml` and configure your settings
-3. **Security**: Set passwords via environment variables (never commit passwords to config.yaml):
-   ```bash
-   export P4PASSWD=your_p4_password
-   export P4_INTEG_SSH_PASSWORD=your_ssh_password  # if using SSH mode
-   ```
-4. `pip install -r requirements.txt`
-5. `python wsgi.py`
+### 1. Configure Master (`config.yaml`)
 
-## Remote SSH Mode
-When your Perforce workspace must live on Linux but you run this service on Windows, enable SSH mode to execute all p4 commands on the Linux host.
-
-1. On Linux host:
-   - Install `p4` and set up the client/workspace (Root should match a Linux path, e.g. `/srv/p4/ws`).
-   - Ensure you can SSH from the Windows machine to this host with key or password.
-2. In `config.yaml` set:
 ```yaml
-exec:
-  mode: "ssh"
-  ssh:
-    host: "your-linux-host"
-    user: "your-user"
-    port: 22
-    key_path: "C:/path/to/key"  # or leave empty and set password
-    password: ""
-  workspace_root: "/srv/p4/ws"  # remote workspace root
+# P4 Configuration
 p4:
-  port: "perforce:1666"
-  user: "your_user"
-  client: "linux_client_name"
-```
-3. Restart the service. Use `/health/p4` to verify `exec_mode=ssh` and remote `workspace_root_exists=true`.
+  port: perforce:1666
+  user: your_user
+  client: your_client
+  password: ''  # Use environment variable P4PASSWD
+  bin: /path/to/p4
 
-All integrate/resolve/submit and test hooks will now run on the Linux host.
+# Agent Configuration (Master's listening address)
+agent:
+  master_host: 10.67.190.37  # Your Master's IP
+  master_port: 9090
 
-## Admin UI
+# SSH Configuration (for Agent deployment)
+ssh:
+  host: srdcws990  # or 'localhost' for local mode
+  user: your_user
+  port: 22
+  key_path: ~/.ssh/id_rsa
+  password: ''  # Optional fallback
 
-Access the web interface at `http://localhost:5000/admin`:
-- **Submit** - Create new integration jobs
-- **Running** - Monitor active jobs with live status updates
-- **Done** - Review completed jobs
-- **Job Detail** - View logs, conflicts, and manage resolution
-
-## What's New in v2.1.0
-
-### Unified Submit Flow
-- **All submissions now use the complete workflow**: shelve → name_check → p4push
-- Fixed inconsistency where manual resolve used direct `p4 submit` (bypassing shelve)
-- `ready_to_submit` status now uses `continue_to_submit` API for consistent behavior
-
-### Configurable Auto-Submit
-- **New config option**: `auto_resolve.auto_submit` (default: `true`)
-  - `auto_submit: true` → Auto-submit when conflicts cleared (both auto-resolve and manual rescan)
-  - `auto_submit: false` → Wait for manual confirmation after conflicts cleared
-- Unified behavior between auto-resolve thread and manual rescan operations
-
-### Removed Deprecated APIs
-- Removed `admin_submit` method and routes (use `continue_to_submit` instead)
-- All submissions now go through proper shelving and validation
-- CLI `submit` command now uses complete workflow
-
-## What's New in v2.0.0
-
-### Manual Rescan Flow
-- **`rescan_conflicts()` behavior** - controlled by `auto_submit` config
-- When conflicts are cleared and `auto_submit: true`, automatically continues to submit
-- When `auto_submit: false`, job moves to `ready_to_submit` status waiting for manual confirmation
-- Auto-resolve background thread respects the same `auto_submit` configuration
-
-### API Changes
-- Primary endpoint: `POST /api/jobs/<job_id>/continue_to_submit` - complete shelve + p4push workflow
-- Deprecated: `POST /api/jobs/<job_id>/submit` (removed in v2.1.0)
-
-### Configuration
-- `max_queue_size` (default: 100) - limits number of jobs that can be queued
-- `auto_resolve.auto_submit` (default: true) - controls auto-submit behavior
-- Auto-resolve thread respects manual resolve operations (won't interfere)
-
-### Status Values
-- `ready_to_submit` - status when conflicts cleared and waiting for submission (if auto_submit=false)
-
-## Architecture
-
-### Project Structure
-```
-app/
-├── agent/              # Agent module
-│   └── agent_core.py   # Agent core logic
-├── master/             # Master module
-│   ├── agent_server.py # Agent server implementation
-│   ├── bootstrapper.py # Bootstrapping logic
-│   └── job_state_machine.py # Job state management
-├── constants.py        # Constants and configuration values
-├── env_helper.py       # Environment initialization helper
-├── storage.py          # Job storage with caching (10x performance)
-├── runner.py           # Local and SSH command execution
-├── server.py           # Flask routes and API endpoints
-├── events.py           # Event logging and SSE support
-├── api.py              # API definitions
-└── templates/          # Jinja2 HTML templates
+# Workspace
+workspace:
+  root: /path/to/workspace
 ```
 
-### Key Concepts
+### 2. Start Master
 
-**Job ID**: Each job has two IDs:
-- **Readable ID**: `INT-20251029-001` (user-friendly, date-based)
-- **UUID**: `2b27e130-...` (internal, globally unique)
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-**Storage**: In-memory cache with lazy writes (2-second batching)
+# Start Master (Windows or Linux)
+python app.py
+```
 
-**Caching**: Conflict checks cached for 30 seconds, manual rescans debounced (10 seconds)
+The Master will:
+1. Start Flask web UI on port 5000
+2. Start Agent TCP server on port 9090
+3. Wait for Agent connections
 
-**Concurrency**: Job-level locks prevent race conditions between auto-resolve and manual operations
+### 3. Deploy Agent
+
+When you create a job via the web UI:
+1. Master automatically deploys Agent to the configured SSH host
+2. Agent connects back to Master on TCP port 9090
+3. Master sends commands, Agent executes and streams logs
+
+## Job Workflow
+
+### State Machine Flow
+
+```
+INIT → SYNC → INTEGRATE → RESOLVE_PASS_1 → RESOLVE_PASS_2 
+  ↓                              ↓              ↓
+ERROR                   RESOLVE_CHECK ←─────────┘
+  ↑                              ↓
+  └──────────────────── NEEDS_RESOLVE (manual)
+                                 ↓
+                         PRE_SUBMIT → SHELVE → P4PUSH → DONE
+                                        ↓
+                                    NC_FIX (if needed)
+```
+
+### Stage Details
+
+1. **SYNC**: Update workspace to latest
+2. **INTEGRATE**: Perform P4 integration
+3. **RESOLVE_PASS_1**: First auto-resolve attempt
+4. **RESOLVE_PASS_2**: Second auto-resolve attempt
+5. **RESOLVE_CHECK**: Check for remaining conflicts
+6. **NEEDS_RESOLVE**: Wait for manual resolution
+7. **PRE_SUBMIT**: Run test hooks and blocklist checks
+8. **SHELVE**: Create shelved changelist
+9. **NC_FIX**: Fix naming conflicts if any
+10. **P4PUSH**: Push to target
+11. **DONE**: Job completed successfully
+
+## Web Interface
+
+Access at `http://localhost:5000`:
+
+- **Dashboard** (`/admin`): View all jobs with status
+- **New Job** (`/admin/submit`): Create integration jobs
+- **Job Detail** (`/jobs/<id>`): View logs, resolve conflicts
+
+### Status Indicators
+- 🟢 **Connected**: Agent online and ready
+- 🟡 **Connecting**: Waiting for Agent connection
+- ⚫ **Offline**: No Agent connected
 
 ## API Reference
 
 ### Job Management
-- `POST /api/jobs/integrate` - Create integration job
+- `POST /api/jobs` - Create new job
 - `GET /api/jobs` - List all jobs
-- `GET /api/jobs/<id>` - Get job details (supports UUID or readable_id)
-- `POST /api/jobs/<id>/cancel` - Cancel job
-- `POST /api/jobs/<id>/retry` - Retry failed job
-- `POST /api/jobs/<id>/continue_to_submit` - Continue to submit after conflicts cleared
+- `GET /api/jobs/<id>` - Get job details
+- `GET /api/jobs/<id>/logs` - Get job logs
+- `POST /api/jobs/<id>/continue` - Continue after manual resolve
 
-### Admin UI
-- `/admin/submit` - Create new integration job
-- `/admin/running` - View active jobs with real-time status
-- `/admin/done` - View completed jobs
-- `/admin/jobs/<id>` - Job details with conflict resolution tools
+### Agent Status
+- `GET /api/agents` - List connected agents
+- `GET /api/agents/status` - Get agent connection status
 
-## Configuration
+## Troubleshooting
 
-See `config.yaml.example` for full configuration options. Key settings:
+### Agent Connection Failed
 
-```yaml
-# Performance tuning
-max_queue_size: 100  # Max queued jobs
+If you see "Agent Connection Failed" error:
 
-# Auto-resolve
-auto_resolve:
-  enabled: true      # Enable background conflict checking
-  interval: 60       # Check interval (seconds)
-  auto_submit: true  # Auto-submit when conflicts cleared (both auto-resolve and manual rescan)
+1. **Check Firewall**: Ensure port 9090 is open on Master
+   ```bash
+   # Windows
+   netsh advfirewall firewall add rule name="P4 Master" dir=in action=allow protocol=TCP localport=9090
+   
+   # Linux
+   sudo firewall-cmd --add-port=9090/tcp --permanent
+   ```
 
-# Auto-cleanup
-auto_cleanup_on_error: true  # Revert workspace on job failure
+2. **Test Connectivity**: From Agent machine
+   ```bash
+   telnet <master_ip> 9090
+   # or
+   nc -zv <master_ip> 9090
+   ```
 
-# Environment initialization
-env_init:
-  enabled: true      # Enable environment setup scripts
-  init_script: /path/to/init.bash
-  bootenv_cmd: bootenv
+3. **Check Agent Process**:
+   ```bash
+   ps aux | grep agent_core
+   ```
+
+### SSH Authentication Failed
+
+1. **Test SSH manually**:
+   ```bash
+   ssh user@host "echo OK"
+   ```
+
+2. **Use password authentication**: Add to `config.yaml`
+   ```yaml
+   ssh:
+     password: 'your_password'
+   ```
+
+3. **Or use local mode**:
+   ```yaml
+   ssh:
+     host: localhost
+   ```
+
+## Architecture Details
+
+### Master Components
+
+- **Flask App**: Web UI and REST API
+- **Agent Server**: TCP server for Agent connections
+- **Job State Machine**: Event-driven job orchestration
+- **Bootstrapper**: Agent deployment via SSH
+
+### Agent Components
+
+- **Agent Core**: TCP client, command executor
+- **Command Executor**: Subprocess management
+- **Log Streamer**: Real-time log forwarding
+
+### Communication Protocol
+
+```json
+// Agent → Master
+{"type": "REGISTER", "hostname": "agent01", "workspace": "/p4/ws"}
+{"type": "LOG", "data": "p4 sync output...", "stream": "stdout"}
+{"type": "CMD_DONE", "exit_code": 0}
+{"type": "ERROR", "message": "Command failed"}
+
+// Master → Agent  
+{"type": "EXEC_CMD", "cmd_id": "123", "command": "p4 sync ..."}
+{"type": "KILL_CMD", "cmd_id": "123"}
+{"type": "SHUTDOWN"}
 ```
 
 ## Development
 
-### Code Quality
-- Unified logging system (no print statements)
-- Constants management (`app/constants.py`)
-- Environment initialization helper (`app/env_helper.py`)
-- Type hints for better IDE support
+### Project Structure
+```
+p4-integration/
+├── app/
+│   ├── agent/              # Agent module
+│   │   └── agent_core.py   # Main agent logic
+│   ├── master/             # Master module
+│   │   ├── agent_server.py # TCP server
+│   │   ├── job_state_machine.py # State machine
+│   │   └── bootstrapper.py # Agent deployment
+│   ├── templates/          # Web UI templates
+│   ├── api.py             # REST API
+│   └── server.py          # Flask routes
+├── config.yaml            # Configuration
+└── app.py                # Entry point
+```
+
+### Adding New Stages
+
+1. Add to `Stage` enum in `job_state_machine.py`
+2. Define command in `_get_stage_command()`
+3. Add transition logic in `_decide_next_stage()`
 
 ## Notes
-- The service wraps `p4` commands via subprocess; it assumes a valid client workspace.
-- For large merges or interactive resolves, prefer resolving incrementally by selected files.
-- Adjust `blocklist` and `test_hook` in `config.yaml` to match your policies.
-- Auto-resolve runs in background but pauses for jobs being manually resolved
-- Job-level locks prevent race conditions between auto-resolve and manual operations
-- Storage uses lazy writes (2-second batching) - graceful shutdown recommended
 
-## Changelog
-
-See [CHANGES.md](CHANGES.md) for detailed changelog.
+- Master can run on Windows or Linux
+- Agents typically run on Linux/Unix (where P4 workspaces exist)
+- One Master can manage multiple Agents
+- Agents auto-reconnect on network failures
+- All commands run with proper environment setup
 
 ## License
 
