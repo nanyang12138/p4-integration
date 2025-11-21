@@ -130,15 +130,20 @@ Access the web interface at `http://localhost:5000/admin`:
 ### Project Structure
 ```
 app/
-├── constants.py      # Constants and configuration values
-├── env_helper.py     # Environment initialization helper
-├── storage.py        # Job storage with caching (10x performance)
-├── jobs.py           # Job management and workflow orchestration
-├── p4_client.py      # P4 command wrapper with retry logic
-├── runner.py         # Local and SSH command execution
-├── server.py         # Flask routes and API endpoints
-├── events.py         # Event logging and SSE support
-└── templates/        # Jinja2 HTML templates
+├── agent/              # Agent module
+│   └── agent_core.py   # Agent core logic
+├── master/             # Master module
+│   ├── agent_server.py # Agent server implementation
+│   ├── bootstrapper.py # Bootstrapping logic
+│   └── job_state_machine.py # Job state management
+├── constants.py        # Constants and configuration values
+├── env_helper.py       # Environment initialization helper
+├── storage.py          # Job storage with caching (10x performance)
+├── runner.py           # Local and SSH command execution
+├── server.py           # Flask routes and API endpoints
+├── events.py           # Event logging and SSE support
+├── api.py              # API definitions
+└── templates/          # Jinja2 HTML templates
 ```
 
 ### Key Concepts
@@ -194,11 +199,6 @@ env_init:
 ```
 
 ## Development
-
-### Running Tests
-```bash
-python verify_optimizations.py
-```
 
 ### Code Quality
 - Unified logging system (no print statements)
