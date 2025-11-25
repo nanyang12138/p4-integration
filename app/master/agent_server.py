@@ -92,6 +92,9 @@ class AgentServer:
                 connection.ip = register_msg.get("ip")
                 connection.workspace = register_msg.get("workspace")
                 
+                # Log the IP for debugging
+                logger.info(f"Agent REGISTER received: hostname={connection.hostname}, ip={connection.ip}, workspace={connection.workspace}")
+                
                 # Use Hostname:IP as stable ID if possible, or fallback
                 # In practice, we might want something unique per session or persistent ID
                 # For now, let's use IP:Port or Hostname
@@ -197,6 +200,8 @@ class AgentServer:
         # Normalize hint: extract base hostname (before first dot)
         hint_base = agent_hint.split('.')[0]
         
+        logger.info(f"wait_for_agent: looking for hint='{agent_hint}', hint_base='{hint_base}'")
+        
         while time.time() - start < timeout:
             # Check if any agent matches the hint
             for aid, conn in self.agents.items():
@@ -204,6 +209,7 @@ class AgentServer:
                 
                 # 1. Check agent_id contains hint
                 if agent_hint in aid:
+                    logger.info(f"wait_for_agent: matched by agent_id contains hint: {aid}")
                     matched = True
                 
                 # 2. Check hostname (normalized comparison to handle FQDN vs short name)
@@ -213,18 +219,29 @@ class AgentServer:
                     if (hint_base == hostname_base or 
                         agent_hint in conn.hostname or 
                         conn.hostname in agent_hint):
+                        logger.info(f"wait_for_agent: matched by hostname: {conn.hostname}")
                         matched = True
                 
                 # 3. Check IP matches hint
                 if conn.ip and agent_hint == conn.ip:
+                    logger.info(f"wait_for_agent: matched by IP: {conn.ip}")
                     matched = True
                 
                 if matched:
                     if agent_hint in self.expected_agents:
                         del self.expected_agents[agent_hint]
                     return aid
+            
+            # Log available agents for debugging (only once per second)
+            if int((time.time() - start) * 10) % 10 == 0:
+                agents_info = [(aid, conn.hostname, conn.ip) for aid, conn in self.agents.items()]
+                logger.debug(f"wait_for_agent: available agents: {agents_info}")
                     
             time.sleep(0.1)
+        
+        # Timeout - log what we have
+        agents_info = [(aid, conn.hostname, conn.ip) for aid, conn in self.agents.items()]
+        logger.warning(f"wait_for_agent: timeout waiting for '{agent_hint}'. Available agents: {agents_info}")
         return None
         
     def get_agent_status(self) -> dict:
