@@ -500,7 +500,18 @@ echo "CHANGELIST:$cl"
 
     def _get_log_dir(self, job_id: str) -> str:
         """Get log directory for a job"""
-        log_dir = os.path.join(self.config.get("data_dir", "data"), "logs", job_id)
+        # Get absolute path: if data_dir is relative, make it relative to project root
+        data_dir = self.config.get("data_dir", "data")
+        
+        # If data_dir is not absolute, make it relative to the project root (parent of app/)
+        if not os.path.isabs(data_dir):
+            # Get project root (parent directory of app/)
+            current_file = os.path.abspath(__file__)  # job_state_machine.py
+            app_dir = os.path.dirname(os.path.dirname(current_file))  # app/
+            project_root = os.path.dirname(app_dir)  # p4-integration/
+            data_dir = os.path.join(project_root, data_dir)
+        
+        log_dir = os.path.join(data_dir, "logs", job_id)
         os.makedirs(log_dir, exist_ok=True)
         return log_dir
 
