@@ -190,27 +190,40 @@ class AgentServer:
         """Wait for an expected agent to connect
         Returns actual agent_id if connected, None if timeout
         
-        agent_hint can be hostname or IP address - we check both"""
+        agent_hint can be hostname, FQDN, or IP address - we normalize and check all"""
         import time
         start = time.time()
+        
+        # Normalize hint: extract base hostname (before first dot)
+        hint_base = agent_hint.split('.')[0]
+        
         while time.time() - start < timeout:
-            # Check if any agent matches the hint (by hostname, IP, or agent_id)
+            # Check if any agent matches the hint
             for aid, conn in self.agents.items():
-                # Check agent_id contains hint
+                matched = False
+                
+                # 1. Check agent_id contains hint
                 if agent_hint in aid:
-                    if agent_hint in self.expected_agents:
-                        del self.expected_agents[agent_hint]
-                    return aid
-                # Check hostname contains hint
-                if conn.hostname and agent_hint in conn.hostname:
-                    if agent_hint in self.expected_agents:
-                        del self.expected_agents[agent_hint]
-                    return aid
-                # Check IP matches hint (important for IP-based SSH config)
+                    matched = True
+                
+                # 2. Check hostname (normalized comparison to handle FQDN vs short name)
+                if conn.hostname:
+                    hostname_base = conn.hostname.split('.')[0]
+                    # Match if base hostnames match, or if either is substring of the other
+                    if (hint_base == hostname_base or 
+                        agent_hint in conn.hostname or 
+                        conn.hostname in agent_hint):
+                        matched = True
+                
+                # 3. Check IP matches hint
                 if conn.ip and agent_hint == conn.ip:
+                    matched = True
+                
+                if matched:
                     if agent_hint in self.expected_agents:
                         del self.expected_agents[agent_hint]
                     return aid
+                    
             time.sleep(0.1)
         return None
         
