@@ -224,9 +224,19 @@ class JobStateMachine:
             integrate_cmd = f"{p4_base} integrate {path}"
         
         # Build SHELVE command (complex multi-step) with explicit parameters
+        # Get a meaningful name for the spec
+        spec_name = branch_spec or spec.get('spec_name', 'N/A')
+        user_description = spec.get('description', '')
+        
+        # Build description with user input if provided
+        if user_description:
+            desc_text = f'\\tREVIEW_INTEGRATE\\n\\t[INFRAFIX] Mass integration from {source or branch_spec or "unknown"} @{source_rev_change or "latest"}\\n\\tSPEC: {spec_name}\\n\\t{user_description}'
+        else:
+            desc_text = f'\\tREVIEW_INTEGRATE\\n\\t[INFRAFIX] Mass integration from {source or branch_spec or "unknown"} @{source_rev_change or "latest"}\\n\\tSPEC: {spec_name}'
+        
         shelve_cmd = f"""
 # Create changelist with full description
-DESC=$'\\tREVIEW_INTEGRATE\\n\\t[INFRAFIX] Mass integration from {source or branch_spec or 'unknown'} @{source_rev_change or 'latest'}\\n\\tSPEC: {spec.get('spec_name', 'N/A')}'
+DESC=$'{desc_text}'
 
 # Create changelist and extract number
 # p4 change -i outputs: "Change 8374786 created." or "Change 8374786 saved."
