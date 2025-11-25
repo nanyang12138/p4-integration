@@ -144,10 +144,6 @@ class JobStateMachine:
                 # PRE_SUBMIT is optional - skip to SHELVE if no hook defined
                 logger.info(f"No pre-submit hook defined for job {job_id}, skipping to SHELVE")
                 await self.transition_to(job_id, Stage.SHELVE)
-            elif next_stage == Stage.NC_FIX:
-                # NC_FIX is optional - skip to SHELVE if no fix script
-                logger.info(f"No name_check fix script defined for job {job_id}, skipping to SHELVE")
-                await self.transition_to(job_id, Stage.SHELVE)
             else:
                 # Required stage has no command - this is an error
                 logger.error(f"No command defined for stage {next_stage}")
@@ -234,6 +230,10 @@ class JobStateMachine:
         else:
             desc_text = f'\\tREVIEW_INTEGRATE\\n\\t[INFRAFIX] Mass integration from {source or branch_spec or "unknown"} @{source_rev_change or "latest"}\\n\\tSPEC: {spec_name}'
         
+        # Get name_check tool path from config
+        name_check_tool = self.config.get("env_init", {}).get("name_check_tool", "/tool/aticad/1.0/src/perforce/name_check_file_list")
+        max_nc_passes = self.config.get("name_check", {}).get("max_passes", 5)
+        
         shelve_cmd = f"""
 # Create changelist with full description
 DESC=$'{desc_text}'
@@ -257,8 +257,46 @@ echo "Created changelist: $cl"
 # Move all opened files to new CL
 {p4_base} reopen -c $cl //...
 
-# Shelve the changelist
+# Initial shelve
+echo "Shelving changelist $cl..."
 {p4_base} shelve -f -c $cl
+
+# ========== name_check remediation ==========
+NC_TOOL="{name_check_tool}"
+MAX_PASSES={max_nc_passes}
+
+if [ ! -x "$NC_TOOL" ]; then
+  echo "WARNING: name_check tool not found at $NC_TOOL, skipping remediation"
+else
+  echo "Starting name_check remediation (max $MAX_PASSES passes)..."
+  tries=0
+  while [ $tries -lt $MAX_PASSES ]; do
+    tries=$((tries+1))
+    echo "name_check pass $tries/$MAX_PASSES"
+    
+    rm -f /tmp/name_check_file_list_$cl 2>/dev/null
+    {p4_base} shelve -c $cl 2>&1 | "$NC_TOOL" > /tmp/name_check_file_list_$cl || true
+    
+    if [ -s /tmp/name_check_file_list_$cl ]; then
+      echo "Offending files found:"
+      cat /tmp/name_check_file_list_$cl
+      echo "Reverting offending files..."
+      {p4_base} -x /tmp/name_check_file_list_$cl revert || echo "WARNING: revert failed"
+      echo "Reshelving (-r)..."
+      {p4_base} shelve -r -c $cl || echo "WARNING: reshelve failed"
+    else
+      echo "name_check: no offending files found"
+      break
+    fi
+  done
+  
+  if [ $tries -eq $MAX_PASSES ]; then
+    echo "WARNING: Reached max passes ($MAX_PASSES), some name_check issues may remain"
+  fi
+  
+  # Cleanup temp file
+  rm -f /tmp/name_check_file_list_$cl 2>/dev/null
+fi
 
 # Output changelist number for parsing
 echo "CHANGELIST:$cl"
@@ -288,7 +326,7 @@ echo "CHANGELIST:$cl"
             Stage.RESOLVE_CHECK: f"{p4_base} resolve -n",
             Stage.PRE_SUBMIT: spec.get('pre_submit_hook'),
             Stage.SHELVE: shelve_cmd,
-            Stage.NC_FIX: spec.get('name_check_fix_script'),
+            # NC_FIX removed - name_check remediation is now handled inline in SHELVE command
             Stage.P4PUSH: p4push_cmd
         }
         
@@ -399,9 +437,8 @@ echo "CHANGELIST:$cl"
             # RESOLVE_CHECK needs output analysis
             # PRE_SUBMIT needs output analysis (implied hook success if exit_code=0)
             Stage.PRE_SUBMIT: Stage.SHELVE,
-            # SHELVE needs output analysis
-            # NC_FIX needs success -> SHELVE
-            Stage.NC_FIX: Stage.SHELVE,
+            # SHELVE needs output analysis (name_check remediation is handled inline)
+            # NC_FIX removed - handled inline in SHELVE command
             Stage.P4PUSH: Stage.DONE
         }
         
@@ -473,16 +510,20 @@ echo "CHANGELIST:$cl"
         return Stage.PRE_SUBMIT
 
     def _analyze_shelve_output(self, job_id: str) -> Stage:
-        """Analyze 'p4 shelve' output for changelist and name_check"""
+        """Analyze 'p4 shelve' output for changelist
+        
+        Note: name_check remediation is now handled inline in the SHELVE command itself,
+        so we no longer need to check for name_check issues here.
+        """
         job = self.jobs[job_id]
+        current_cmd_id = job.get("current_cmd_id")
         
-        # Check stderr for name_check
-        stderr_output = "".join([l["data"] for l in self.logs[job_id] if l["stream"] == "stderr"])
-        if "name_check" in stderr_output.lower():
-            return Stage.NC_FIX
-        
-        # Parse stdout for CHANGELIST:XXX
-        stdout_output = "".join([l["data"] for l in self.logs[job_id] if l["stream"] == "stdout"])
+        # Filter logs for the current command only
+        current_cmd_logs = [
+            l["data"] for l in self.logs.get(job_id, []) 
+            if l.get("cmd_id") == current_cmd_id and l["stream"] == "stdout"
+        ]
+        stdout_output = "".join(current_cmd_logs)
         
         import re
         cl_match = re.search(r'CHANGELIST:(\d+)', stdout_output)
@@ -492,6 +533,8 @@ echo "CHANGELIST:$cl"
             logger.info(f"Parsed changelist {changelist} from SHELVE output for job {job_id}")
         else:
             logger.error(f"Failed to parse changelist from SHELVE output for job {job_id}")
+            # Log what we received for debugging
+            logger.error(f"SHELVE stdout was: {stdout_output[:500]}...")
             return Stage.ERROR
         
         return Stage.P4PUSH
