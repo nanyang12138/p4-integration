@@ -227,11 +227,18 @@ class JobStateMachine:
         shelve_cmd = f"""
 # Create changelist with full description
 DESC=$'\\tREVIEW_INTEGRATE\\n\\t[INFRAFIX] Mass integration from {source or branch_spec or 'unknown'} @{source_rev_change or 'latest'}\\n\\tSPEC: {spec.get('spec_name', 'N/A')}'
-cl=$({p4_base} change -o | awk -v desc="$DESC" '/^Description:/{{print; print desc; in_desc=1; next}} in_desc && /^\\t/{{next}} in_desc && /^[^\\t]/{{in_desc=0}} {{print}}' | {p4_base} change -i | awk '/^Change / {{print $2}}')
+
+# Create changelist and extract number
+# p4 change -i outputs: "Change 8374786 created." or "Change 8374786 saved."
+cl_output=$({p4_base} change -o | awk -v desc="$DESC" '/^Description:/{{print; print desc; in_desc=1; next}} in_desc && /^\\t/{{next}} in_desc && /^[^\\t]/{{in_desc=0}} {{print}}' | {p4_base} change -i)
+
+# Extract CL number using sed (more portable than grep -oP)
+cl=$(echo "$cl_output" | sed -n 's/Change \\([0-9][0-9]*\\) .*/\\1/p')
 
 # Check if changelist was created
 if [ -z "$cl" ]; then
   echo "ERROR: Failed to create changelist"
+  echo "Output was: $cl_output"
   exit 1
 fi
 
