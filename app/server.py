@@ -24,13 +24,18 @@ def register_routes(app, state_machine):
     def admin_submit():
         if request.method == 'POST':
             # Form submission
+            # Get default workspace from config
+            app_config = current_app.config["APP_CONFIG"]
+            default_workspace = app_config.get("workspace", {}).get("root", "")
+            
             spec = {
-                "workspace": request.form.get("workspace"),
+                "workspace": request.form.get("workspace") or default_workspace,
                 "branch_spec": request.form.get("branch_spec"),
                 "changelist": request.form.get("changelist"),
                 "path": request.form.get("path", ""),
-                "init_script": request.form.get("init_script", ""),
-                "description": request.form.get("description", "")
+                "description": request.form.get("description", ""),
+                "trial": request.form.get("trial") == "true"  # Checkbox value
+                # Note: init_script is now hardcoded in job_state_machine.py
             }
             
             job_id = str(uuid.uuid4())
@@ -111,4 +116,10 @@ def register_routes(app, state_machine):
         job = state_machine.get_job(job_id)
         if not job:
             return "Job not found", 404
+        
+        # Debug: log agent info
+        agent_id = job.get("agent_id")
+        connected_agents = list(state_machine.agent_server.agents.keys())
+        app.logger.info(f"Job {job_id} detail page - agent_id: {agent_id}, connected: {connected_agents}")
+        
         return render_template('job_detail.html', job=job)

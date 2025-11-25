@@ -16,7 +16,9 @@
       
       <div class="mb-6">
          <div class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">UUID</div>
-         <code class="block w-full p-2 bg-slate-50 border border-slate-100 rounded text-xs font-mono text-slate-600 cursor-pointer hover:bg-slate-100 transition-colors break-all" onclick="copyToClipboard('{{ job.id }}')" title="Click to copy">{{ job.id }}</code>
+         <code class="block w-full p-2 bg-white border border-slate-300 rounded text-sm font-mono text-slate-900 cursor-pointer hover:bg-slate-50 transition-colors break-all select-all" onclick="copyToClipboard('{{ job.job_id or job.id }}')" title="Click to copy">
+           {% if job.job_id %}{{ job.job_id }}{% elif job.id %}{{ job.id }}{% else %}[No ID Found - Keys: {{ job.keys()|list }}]{% endif %}
+         </code>
       </div>
 
       <!-- Status Indicator -->
@@ -40,7 +42,19 @@
       <!-- Key Info -->
       <div class="space-y-3 text-sm border-t border-slate-100 pt-4">
         <div class="flex justify-between">
-          <span class="text-slate-500">Changelist</span>
+          <span class="text-slate-500">Source CL</span>
+          <span class="font-mono font-medium text-slate-700" id="source-cl-value">
+            {% if job.source_changelist and job.source_changelist != 'latest' %}
+              {{ job.source_changelist }}
+            {% elif job.spec and job.spec.changelist %}
+              {{ job.spec.changelist }}
+            {% else %}
+              <span class="text-amber-500 italic animate-pulse">fetching...</span>
+            {% endif %}
+          </span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Shelved CL</span>
           <span class="font-mono font-medium text-slate-700">{{ job.changelist or '-' }}</span>
         </div>
         {% if job.payload and job.payload.trial %}
@@ -122,23 +136,12 @@
       <div class="mt-6 pt-6 border-t border-slate-100">
         <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Quick Links</h4>
         <div class="flex flex-wrap gap-2">
-          <a href="/api/jobs/{{ job.id }}" target="_blank" class="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-xs text-slate-600 transition-colors">JSON</a>
-          <a href="/api/jobs/{{ job.id }}/heartbeat" target="_blank" class="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-xs text-slate-600 transition-colors">Heartbeat</a>
-          <a href="/api/jobs/{{ job.id }}/process_status" target="_blank" class="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-xs text-slate-600 transition-colors">Proc Status</a>
+          <a href="/api/jobs/{{ job.job_id }}" target="_blank" class="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-xs text-slate-600 transition-colors">JSON</a>
+          <a href="/api/jobs/{{ job.job_id }}/heartbeat" target="_blank" class="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-xs text-slate-600 transition-colors">Heartbeat</a>
+          <a href="/api/jobs/{{ job.job_id }}/process_status" target="_blank" class="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-xs text-slate-600 transition-colors">Proc Status</a>
         </div>
       </div>
       
-      <!-- Artifacts -->
-      <div class="mt-6 pt-6 border-t border-slate-100">
-        <div class="flex items-center justify-between mb-3">
-          <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Artifacts</h4>
-          <button id="btn-toggle-artifacts" class="text-xs text-primary-600 hover:text-primary-800">Show</button>
-        </div>
-        <div id="artifacts-panel" class="hidden bg-slate-50 rounded-lg border border-slate-200 p-3">
-          <div id="artifacts-list" class="text-xs font-mono text-slate-600 space-y-1"></div>
-        </div>
-      </div>
-
     </div>
   </div>
 
@@ -227,8 +230,9 @@
         </h3>
         <span class="text-xs text-slate-400">Auto-refreshing</span>
       </div>
-      <div class="bg-slate-900 p-4 overflow-x-auto">
-        <pre class="font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">{% for line in job.log %}{{ line }}{% endfor %}</pre>
+      <div class="bg-slate-900 p-4 overflow-x-auto h-96 overflow-y-auto" id="log-container">
+        <pre class="font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed" id="log-output">{% for line in job.log %}{{ line }}
+{% endfor %}</pre>
       </div>
     </div>
 
@@ -238,12 +242,11 @@
 <script>
 // Original JS Logic Preserved & Adapted
 (function(){
-  var jobId = "{{ job.id }}";
+  var jobId = "{{ job.job_id }}";
   var btnCancel = document.getElementById('btn-cancel');
   var btnRetry = document.getElementById('btn-retry');
-  var btnToggleArtifacts = document.getElementById('btn-toggle-artifacts');
-  var artifactsPanel = document.getElementById('artifacts-panel');
-  var artifactsList = document.getElementById('artifacts-list');
+  var btnCheckHealth = document.getElementById('btn-hb');
+  var healthResult = document.getElementById('hb-res');
   
   if(btnCancel){
     btnCancel.addEventListener('click', function(){
@@ -257,18 +260,19 @@
   
   if(btnRetry){
     btnRetry.addEventListener('click', function(){
-      if(!confirm('Retry will kill current job, clean workspace, and spawn new isolated process. Continue?')) return;
+      if(!confirm('Retry will create a new job with the same configuration. Continue?')) return;
       btnRetry.disabled = true;
       btnRetry.textContent = 'Retrying...';
-      fetch('/api/jobs/' + jobId + '/retry?mode=process', {method:'POST'})
+      fetch('/api/jobs/' + jobId + '/retry', {method:'POST'})
         .then(function(r) {
           if(!r.ok) return r.json().then(e => { throw new Error(e.error || 'HTTP ' + r.status); });
           return r.json();
         })
         .then(function(res){ 
-          if(res && res.ok){ 
-            alert('Job queued for retry successfully');
-            location.reload(); 
+          if(res && res.status === 'success' && res.new_job_id){ 
+            alert('Retry job created successfully!');
+            // Redirect to the new job
+            window.location.href = '/jobs/' + res.new_job_id;
           } else { 
             alert(res.error || 'Retry failed'); 
             btnRetry.disabled = false;
@@ -279,6 +283,31 @@
           alert('Retry failed: ' + err.message);
           btnRetry.disabled = false;
           btnRetry.textContent = 'Retry';
+        });
+    });
+  }
+  
+  if(btnCheckHealth){
+    btnCheckHealth.addEventListener('click', function(){
+      if(healthResult) healthResult.textContent = 'Checking...';
+      fetch('/api/jobs/' + jobId + '/heartbeat')
+        .then(r => r.json())
+        .then(function(data){
+          if(healthResult){
+            if(data.connected){
+              healthResult.textContent = '✓ Connected';
+              healthResult.className = 'ml-2 font-normal text-green-600';
+            } else {
+              healthResult.textContent = '✗ Disconnected';
+              healthResult.className = 'ml-2 font-normal text-red-600';
+            }
+          }
+        })
+        .catch(function(){
+          if(healthResult){
+            healthResult.textContent = 'Error';
+            healthResult.className = 'ml-2 font-normal text-red-600';
+          }
         });
     });
   }
@@ -297,27 +326,6 @@
     });
   }
 
-  if(btnToggleArtifacts && artifactsPanel && artifactsList){
-    btnToggleArtifacts.addEventListener('click', function(){
-      var isHidden = artifactsPanel.classList.contains('hidden');
-      if(isHidden) artifactsPanel.classList.remove('hidden'); else artifactsPanel.classList.add('hidden');
-      btnToggleArtifacts.textContent = isHidden ? 'Hide' : 'Show';
-      
-      if(isHidden && !artifactsList.getAttribute('data-loaded')){
-        fetch('/api/jobs/' + jobId + '/artifacts').then(r=>r.json()).then(function(res){
-          var items = (res && res.artifacts) ? res.artifacts : [];
-          if(!items.length){ artifactsList.innerHTML = '<div class="text-slate-400 italic">No artifacts found</div>'; artifactsList.setAttribute('data-loaded','1'); return; }
-          var html = '<ul class="space-y-1">' + items.map(function(name){
-            var u = '/api/jobs/' + jobId + '/artifacts/' + encodeURIComponent(name);
-            return '<li><a href="' + u + '" target="_blank" class="hover:text-primary-600 flex items-center gap-2"><i class="fa-solid fa-file-lines text-slate-400"></i> ' + name + '</a></li>';
-          }).join('') + '</ul>';
-          artifactsList.innerHTML = html;
-          artifactsList.setAttribute('data-loaded','1');
-        }).catch(function(_){ artifactsList.innerHTML = '<span class="text-red-500">Failed to load</span>'; artifactsList.setAttribute('data-loaded','1'); });
-      }
-    });
-  }
-  
   // Resolve Commands Logic
   var btnGenerateAll = document.getElementById('btn-generate-all');
   var btnGenerateIndividual = document.getElementById('btn-generate-individual');
@@ -357,6 +365,81 @@
     btnSelectAll.textContent = 'Selected!'; setTimeout(()=>btnSelectAll.textContent='Select', 2000);
   });
 
+  // Log fetching and updating
+  var logOutput = document.getElementById('log-output');
+  var logContainer = document.getElementById('log-container');
+  var lastLogLength = 0;
+
+  async function fetchLogs() {
+    try {
+      const response = await fetch('/api/jobs/' + jobId + '/logs');
+      if (!response.ok) {
+        console.error('Failed to fetch logs:', response.status);
+        return;
+      }
+      const logs = await response.json();
+      
+      // Build log text
+      let logText = '';
+      for (let entry of logs) {
+        const line = entry.data || '';
+        
+        // Check if it's a real error or just stderr output
+        const isRealError = line.toLowerCase().includes('error:') || 
+                           line.toLowerCase().includes('fatal:') || 
+                           line.toLowerCase().includes('failed:') ||
+                           line.toLowerCase().includes('not found') ||
+                           line.toLowerCase().includes('permission denied') ||
+                           line.toLowerCase().includes('traceback');
+        
+        if (entry.stream === 'stdout') {
+          logText += line + '\n';
+        } else if (entry.stream === 'stderr') {
+          // Many tools output info to stderr, not all stderr is error
+          // Only add [ERROR] prefix for real errors
+          if (isRealError) {
+            logText += '[ERROR] ' + line + '\n';
+          } else {
+            // For informational stderr (like bootenv output), show normally
+            logText += line + '\n';
+          }
+        }
+      }
+      
+      // Update if changed
+      if (logs.length > lastLogLength) {
+        logOutput.textContent = logText;
+        // Auto-scroll to bottom
+        logContainer.scrollTop = logContainer.scrollHeight;
+        lastLogLength = logs.length;
+      }
+    } catch (error) {
+      console.error('Error fetching logs:', error);
+    }
+  }
+
+  // Fetch logs every 2 seconds
+  setInterval(fetchLogs, 2000);
+  fetchLogs(); // Initial fetch
+  
+  // Update source changelist display
+  var sourceClValue = document.getElementById('source-cl-value');
+  async function updateSourceCL() {
+    try {
+      const response = await fetch('/api/jobs/' + jobId);
+      const job = await response.json();
+      if (job.source_changelist && job.source_changelist !== 'latest' && sourceClValue) {
+        // Update to show actual CL number
+        sourceClValue.innerHTML = job.source_changelist;
+        sourceClValue.className = 'font-mono font-medium text-slate-700';
+      }
+    } catch (error) {
+      console.error('Error updating source CL:', error);
+    }
+  }
+  setInterval(updateSourceCL, 2000);
+  updateSourceCL(); // Initial fetch
+
   // Status Indicator Logic
   var statusBadge = document.getElementById('status-badge');
   var stageText = document.getElementById('stage-text');
@@ -390,7 +473,9 @@
       'cancelled': { color: 'bg-slate-400', bg: 'bg-slate-50', border: 'border-slate-200', animate: false }
     };
     
-    const c = config[status] || config['queued'];
+    // Normalize status to lowercase for matching
+    const normalizedStatus = (status || '').toLowerCase();
+    const c = config[normalizedStatus] || config['queued'];
     
     if(indicator) {
       indicator.className = `w-3 h-3 rounded-full shadow-sm transition-all duration-300 ${c.color} ${c.animate ? 'animate-pulse' : ''}`;
@@ -419,35 +504,62 @@
         var el = document.getElementById('process-monitor');
         if(!el) return;
         
-        var activeProcesses = data.processes ? data.processes.filter(p => p.status !== 'not_found' && p.is_active) : [];
-        if(activeProcesses.length === 0){ el.innerHTML = '<div class="text-center text-slate-400 py-4 text-sm">No active processes running</div>'; return; }
-        
         var html = '<div class="space-y-3">';
         
-        // P4 Connection
-        var connIcon = data.p4_connection === 'ok' ? '<i class="fa-solid fa-check-circle text-green-500"></i>' : '<i class="fa-solid fa-times-circle text-red-500"></i>';
-        html += `<div class="text-xs font-medium text-slate-600 bg-slate-50 p-2 rounded flex items-center gap-2">${connIcon} P4 Connection</div>`;
+        // Agent Connection Status
+        if(data.agent_connected){
+          html += '<div class="text-xs font-medium text-slate-600 bg-green-50 p-2 rounded flex items-center gap-2">';
+          html += '<i class="fa-solid fa-check-circle text-green-500"></i> Agent Connected';
+          if(data.agent_id) html += ' <span class="text-slate-400">(' + data.agent_id + ')</span>';
+          html += '</div>';
+        } else {
+          html += '<div class="text-xs font-medium text-slate-600 bg-red-50 p-2 rounded flex items-center gap-2">';
+          html += '<i class="fa-solid fa-times-circle text-red-500"></i> Agent Disconnected';
+          html += '</div>';
+          // Show debug info
+          if(data.debug){
+            html += '<div class="text-[10px] text-slate-500 bg-slate-50 p-2 rounded mt-2">';
+            html += '<div><strong>Debug:</strong> ' + data.debug.reason + '</div>';
+            if(data.debug.job_agent_id) html += '<div>Job Agent ID: ' + data.debug.job_agent_id + '</div>';
+            if(data.debug.connected_agents && data.debug.connected_agents.length > 0){
+              html += '<div>Connected: ' + data.debug.connected_agents.join(', ') + '</div>';
+            } else {
+              html += '<div>No agents connected</div>';
+            }
+            html += '</div>';
+          }
+        }
         
-        activeProcesses.forEach(function(proc){
-          var color = proc.is_active ? 'green' : 'amber';
-          var cpuColor = proc.cpu_percent > 50 ? 'text-red-600' : (proc.cpu_percent > 20 ? 'text-amber-600' : 'text-green-600');
-          
-          html += `<div class="bg-slate-50 rounded-lg border border-slate-200 p-3 text-xs">
-            <div class="flex justify-between items-center mb-2">
-              <div class="font-semibold text-slate-700 flex items-center gap-2">
-                <div class="w-2 h-2 rounded-full bg-${color}-500 animate-pulse"></div>
-                ${proc.stage}
-              </div>
-              <code class="bg-white px-1.5 py-0.5 rounded border border-slate-100 text-slate-500">PID ${proc.pid}</code>
-            </div>
-            <div class="grid grid-cols-3 gap-2 text-[10px] font-mono uppercase tracking-wider text-slate-500">
-              <div>CPU: <span class="${cpuColor} font-bold">${proc.cpu_percent.toFixed(1)}%</span></div>
-              <div>MEM: <span class="font-bold text-slate-700">${proc.memory_percent.toFixed(1)}%</span></div>
-              <div>TIME: <span class="text-slate-700">${proc.runtime}</span></div>
-            </div>
-            ${proc.wchan ? `<div class="mt-2 text-[10px] text-slate-400 truncate" title="${proc.wchan}">Wait: ${proc.wchan}</div>` : ''}
-          </div>`;
-        });
+        // Current Stage
+        if(data.current_stage){
+          html += '<div class="text-xs text-slate-600 bg-slate-50 p-2 rounded">';
+          html += '<span class="font-medium">Current Stage:</span> ' + data.current_stage;
+          html += '</div>';
+        }
+        
+        // Process PIDs
+        var pids = data.processes || {};
+        var pidCount = Object.keys(pids).length;
+        
+        if(pidCount > 0){
+          html += '<div class="space-y-2">';
+          for(var name in pids){
+            var pid = pids[name];
+            html += '<div class="bg-slate-50 rounded-lg border border-slate-200 p-3 text-xs">';
+            html += '<div class="flex justify-between items-center">';
+            html += '<div class="font-semibold text-slate-700 flex items-center gap-2">';
+            html += '<div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>';
+            html += name.toUpperCase();
+            html += '</div>';
+            html += '<code class="bg-white px-1.5 py-0.5 rounded border border-slate-100 text-slate-500">PID ' + pid + '</code>';
+            html += '</div>';
+            html += '</div>';
+          }
+          html += '</div>';
+        } else if(data.agent_connected){
+          html += '<div class="text-center text-slate-400 py-4 text-sm">No active processes</div>';
+        }
+        
         html += '</div>';
         el.innerHTML = html;
     }).catch(e => console.error(e));

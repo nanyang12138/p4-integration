@@ -64,7 +64,7 @@ def create_app() -> "Flask":
     # Initialize Master-Agent Components
     if agent_server is None:
         agent_server = AgentServer(host="0.0.0.0", port=9090)
-        state_machine = JobStateMachine(agent_server)
+        state_machine = JobStateMachine(agent_server, cfg)  # Pass config here
         
         # Start AgentServer in a background thread
         def run_agent_server():

@@ -12,7 +12,7 @@
     
     <!-- Quick Stats -->
     <div class="flex gap-4">
-      {% set running_count = jobs | selectattr('stage', 'notin', ['DONE', 'ERROR']) | list | length %}
+      {% set running_count = jobs | rejectattr('stage', 'in', ['DONE', 'ERROR']) | list | length %}
       {% set done_count = jobs | selectattr('stage', 'equalto', 'DONE') | list | length %}
       
       <div class="bg-white px-4 py-2 rounded-lg shadow-sm border border-slate-200 flex items-center gap-3">
@@ -67,7 +67,16 @@
             </td>
             <td class="px-6 py-4">
               <div class="font-medium text-slate-900">{{ job.spec.description or 'No description' }}</div>
-              <div class="text-xs text-slate-500 mt-0.5">CL: {{ job.spec.changelist }}</div>
+              <div class="text-xs text-slate-500 mt-0.5">
+                CL: 
+                {% if job.source_changelist and job.source_changelist != 'latest' %}
+                  {{ job.source_changelist }}
+                {% elif job.spec.changelist %}
+                  {{ job.spec.changelist }}
+                {% else %}
+                  <span class="text-amber-500 italic">fetching...</span>
+                {% endif %}
+              </div>
             </td>
             <td class="px-6 py-4">
               <div class="flex flex-col gap-1 text-xs">
@@ -78,20 +87,31 @@
               </div>
             </td>
             <td class="px-6 py-4">
-              {% set status_colors = {
-                'DONE': 'bg-green-100 text-green-700 border-green-200',
-                'ERROR': 'bg-red-100 text-red-700 border-red-200',
-                'NEEDS_RESOLVE': 'bg-yellow-100 text-yellow-700 border-yellow-200',
-                'INIT': 'bg-slate-100 text-slate-700 border-slate-200'
+              {% set status_map = {
+                'INIT': {'status': 'pending', 'color': 'bg-slate-100 text-slate-700 border-slate-200'},
+                'SYNC': {'status': 'running', 'color': 'bg-green-100 text-green-700 border-green-200', 'animate': true},
+                'INTEGRATE': {'status': 'running', 'color': 'bg-green-100 text-green-700 border-green-200', 'animate': true},
+                'RESOLVE_PASS_1': {'status': 'running', 'color': 'bg-green-100 text-green-700 border-green-200', 'animate': true},
+                'RESOLVE_PASS_2': {'status': 'running', 'color': 'bg-green-100 text-green-700 border-green-200', 'animate': true},
+                'RESOLVE_CHECK': {'status': 'running', 'color': 'bg-green-100 text-green-700 border-green-200', 'animate': true},
+                'NEEDS_RESOLVE': {'status': 'needs_resolve', 'color': 'bg-amber-100 text-amber-700 border-amber-200'},
+                'PRE_SUBMIT': {'status': 'running', 'color': 'bg-blue-100 text-blue-700 border-blue-200', 'animate': true},
+                'SHELVE': {'status': 'running', 'color': 'bg-blue-100 text-blue-700 border-blue-200', 'animate': true},
+                'P4PUSH': {'status': 'running', 'color': 'bg-blue-100 text-blue-700 border-blue-200', 'animate': true},
+                'DONE': {'status': 'done', 'color': 'bg-green-100 text-green-700 border-green-200'},
+                'ERROR': {'status': 'error', 'color': 'bg-red-100 text-red-700 border-red-200'}
               } %}
-              {% set default_color = 'bg-blue-100 text-blue-700 border-blue-200' %}
+              {% set stage_info = status_map.get(job.stage, {'status': 'unknown', 'color': 'bg-slate-100 text-slate-700 border-slate-200'}) %}
               
-              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border {{ status_colors.get(job.stage, default_color) }}">
-                {% if job.stage not in ['DONE', 'ERROR', 'NEEDS_RESOLVE', 'INIT'] %}
-                  <span class="w-1.5 h-1.5 rounded-full bg-current mr-1.5 animate-pulse"></span>
-                {% endif %}
-                {{ job.stage }}
-              </span>
+              <div class="flex flex-col gap-1">
+                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border {{ stage_info.color }}">
+                  {% if stage_info.animate %}
+                    <span class="w-1.5 h-1.5 rounded-full bg-current mr-1.5 animate-pulse"></span>
+                  {% endif %}
+                  {{ stage_info.status|upper }}
+                </span>
+                <span class="text-[10px] text-slate-400">{{ job.stage }}</span>
+              </div>
             </td>
             <td class="px-6 py-4 text-right text-slate-500 tabular-nums text-xs">
               <div class="ts" data-ts="{{ job.updated_at_ts }}">

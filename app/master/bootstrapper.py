@@ -9,6 +9,8 @@ import logging
 import time
 import subprocess
 import sys
+import random
+import socket
 
 logger = logging.getLogger("Bootstrapper")
 
@@ -25,6 +27,7 @@ class Bootstrapper:
         self.ssh_key_path = ssh_config.get("key_path")
         self.ssh_password = ssh_config.get("password")
         self.ssh_port = ssh_config.get("port", 22)
+        self.remote_python = ssh_config.get("python_path", "python3")
         
     def deploy_agent(self, master_host: str, master_port: int, workspace: str, agent_server) -> tuple[str, str]:
         """
@@ -36,7 +39,19 @@ class Bootstrapper:
         agent_path = os.path.join(current_dir, "../agent/agent_core.py")
         
         # Check for Local Mode
-        is_local = self.ssh_host in ["localhost", "127.0.0.1", "0.0.0.0"]
+        hostname = socket.gethostname()
+        # Resolve localhost/127.0.0.1 to verify if ssh_host points to this machine
+        is_local = self.ssh_host in ["localhost", "127.0.0.1", "0.0.0.0", hostname]
+        
+        # Also check if ssh_host resolves to a local IP
+        if not is_local:
+            try:
+                target_ip = socket.gethostbyname(self.ssh_host)
+                local_ip = socket.gethostbyname(hostname)
+                if target_ip == "127.0.0.1" or target_ip == local_ip:
+                    is_local = True
+            except:
+                pass
         
         # Determine agent hint for connection tracking
         agent_hint = self.ssh_host
@@ -54,11 +69,17 @@ class Bootstrapper:
                 
                 cmd = [sys.executable, agent_path, master_host, str(master_port), workspace]
                 
-                # Start process detached/background
-                # Different handling for Windows vs Unix
+                # Log to file for debugging
+                log_path = f"/tmp/p4_agent_local_{int(time.time())}.log"
+                try:
+                    log_file = open(log_path, "w")
+                    logger.info(f"Agent logging to {log_path}")
+                except:
+                    log_file = subprocess.DEVNULL
+
                 popen_kwargs = {
-                    'stdout': subprocess.DEVNULL,
-                    'stderr': subprocess.DEVNULL,
+                    'stdout': log_file,
+                    'stderr': subprocess.STDOUT,
                 }
                 
                 if sys.platform == 'win32':
@@ -86,112 +107,78 @@ class Bootstrapper:
                 logger.error(f"Agent source not found at {agent_path}")
                 raise
 
-            # Prepare Payload
-            agent_code_b64 = base64.b64encode(agent_code.encode('utf-8')).decode('ascii')
-            
-            # Construct Remote Command
-            # Force bash execution to avoid csh/tcsh issues
-            # Use double quotes for the outer command to avoid quote nesting issues
-            remote_cmd = (
-                f'/bin/bash << "BASH_SCRIPT_EOF"\n'
-                f'TEMP_AGENT=/tmp/p4_agent_$$.py\n'
-                f'cat > $TEMP_AGENT << AGENT_EOF\n'
-                f'import base64\n'
-                f'import sys\n'
-                f'agent_code = base64.b64decode("{agent_code_b64}")\n'
-                f'exec(agent_code)\n'
-                f'AGENT_EOF\n'
-                f'python3 $TEMP_AGENT {master_host} {master_port} {workspace} > /tmp/agent_$$.log 2>&1 &\n'
-                f'AGENT_PID=$!\n'
-                f'rm -f $TEMP_AGENT\n'
-                f'echo $AGENT_PID\n'
-                f'BASH_SCRIPT_EOF\n'
-            )
-            
             # Execute via SSH
             client = paramiko.SSHClient()
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             
             try:
-                connect_kwargs = {
-                    "hostname": self.ssh_host,
-                    "username": self.ssh_user,
-                    "port": self.ssh_port,
-                    "timeout": 10
-                }
+                # Simple connection with password (most reliable)
+                logger.info(f"Connecting to {self.ssh_user}@{self.ssh_host}:{self.ssh_port}...")
                 
-                # Try key-based auth first if configured
-                if self.ssh_key_path:
-                    key_path = os.path.expanduser(self.ssh_key_path)
-                    if os.path.exists(key_path):
-                        connect_kwargs["key_filename"] = key_path
-                        logger.info(f"Using SSH key: {key_path}")
-                    else:
-                        logger.warning(f"SSH key not found: {key_path}")
-                
-                # Add password as fallback if provided
-                if self.ssh_password:
-                    connect_kwargs["password"] = self.ssh_password
-                    logger.info("Password authentication configured as fallback")
-                
-                # Attempt connection
                 try:
-                    client.connect(**connect_kwargs)
-                except paramiko.AuthenticationException as auth_err:
-                    logger.error(f"SSH Authentication failed: {auth_err}")
-                    
-                    # Provide helpful error message
-                    error_msg = f"SSH authentication failed for {self.ssh_user}@{self.ssh_host}\n"
-                    
-                    if self.ssh_key_path:
-                        key_path = os.path.expanduser(self.ssh_key_path)
-                        if not os.path.exists(key_path):
-                            error_msg += f"- SSH key file not found: {key_path}\n"
-                            error_msg += f"- Generate key: ssh-keygen -t rsa -f {key_path}\n"
-                        else:
-                            error_msg += f"- SSH key rejected: {key_path}\n"
-                            error_msg += f"- Copy key to remote: ssh-copy-id -i {key_path} {self.ssh_user}@{self.ssh_host}\n"
-                    
-                    if not self.ssh_password:
-                        error_msg += "- No password configured in config.yaml\n"
-                        error_msg += "- Add 'password: YOUR_PASSWORD' under 'ssh:' section\n"
-                    
-                    raise RuntimeError(error_msg) from auth_err
+                    # Connect with password and longer timeout
+                    client.connect(
+                        hostname=self.ssh_host,
+                        username=self.ssh_user,
+                        password=self.ssh_password,
+                        port=self.ssh_port,
+                        timeout=30,  # Longer timeout
+                        banner_timeout=30,
+                        auth_timeout=30
+                    )
+                    logger.info("SSH connection successful!")
+                except Exception as e:
+                    error_msg = f"SSH connection failed for {self.ssh_user}@{self.ssh_host}\n"
+                    error_msg += f"Error: {e}\n"
+                    raise RuntimeError(error_msg) from e
+
+                # Use SFTP to upload the file directly (Reliable!)
+                sftp = client.open_sftp()
+                remote_agent_path = f"/tmp/p4_agent_{int(time.time())}_{random.randint(1000, 9999)}.py"
+                logger.info(f"Uploading agent to {remote_agent_path}")
                 
-                # Log the command for debugging
-                logger.info(f"Executing remote command on {self.ssh_host}")
-                logger.debug(f"Command: {remote_cmd[:200]}...")  # Log first 200 chars
+                # Write content directly to remote file
+                with sftp.file(remote_agent_path, "w") as f:
+                    f.write(agent_code)
                 
+                sftp.close()
+                
+                # Make executable (optional, but good practice)
+                client.exec_command(f"chmod +x {remote_agent_path}")
+                
+                # Start Agent
+                # Explicitly set log file via shell redirect to ensure it exists even if python fails early
+                # The agent script *also* logs to a file, but this catches startup errors (like import errors)
+                log_file_path = f"/tmp/p4_agent_boot_{int(time.time())}.log"
+                
+                remote_cmd = (
+                    f"sh -c 'nohup {self.remote_python} {remote_agent_path} {master_host} {master_port} {workspace} "
+                    f"> {log_file_path} 2>&1 & echo $!'"
+                )
+                
+                logger.info(f"Starting agent: {remote_cmd}")
                 stdin, stdout, stderr = client.exec_command(remote_cmd)
                 
-                # Read output
                 pid_output = stdout.read().decode().strip()
                 err_output = stderr.read().decode().strip()
                 
-                # Log full output for debugging
                 logger.info(f"Remote stdout: {pid_output}")
                 if err_output:
                     logger.warning(f"Remote stderr: {err_output}")
                 
-                # Extract PID (last line of output)
-                if pid_output:
-                    lines = pid_output.strip().split('\n')
-                    pid = lines[-1].strip()  # Last line should be the PID
+                # Log where to find the logs
+                logger.info(f"Agent startup logs: {log_file_path}")
+                
+                if pid_output and pid_output.isdigit():
+                    pid = pid_output
+                    logger.info(f"SSH Agent started with PID {pid}")
+                    # We do NOT delete the file immediately, let it run. 
+                    # Cleanup could be handled by the agent itself or a cron, 
+                    # but for now leaving it is safer for debugging.
+                    return pid, agent_hint
                 else:
-                    pid = None
-                
-                if not pid or not pid.isdigit():
-                    error_details = f"Agent start failed.\n"
-                    error_details += f"Expected PID but got: {repr(pid_output)}\n"
-                    if err_output:
-                        error_details += f"Stderr: {err_output}\n"
-                    error_details += f"\nDebug: Check /tmp/agent_*.log on {self.ssh_host}"
-                    logger.error(error_details)
-                    raise RuntimeError(error_details)
+                     raise RuntimeError(f"Failed to get PID. Output: {pid_output}. Error: {err_output}")
                     
-                logger.info(f"SSH Agent started with PID {pid} on {self.ssh_host}")
-                return pid, agent_hint
-                
             except Exception as e:
                 logger.error(f"SSH deployment failed: {e}")
                 raise

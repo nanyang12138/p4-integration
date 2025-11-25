@@ -11,7 +11,22 @@ import os
 import subprocess
 import socket
 import time
+import logging
+import traceback
 from typing import Optional, Dict
+
+# Setup basic logging immediately
+LOG_FILE = f"/tmp/p4_agent_{os.getpid()}.log"
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s'
+)
+
+# Also log to stdout/stderr for development if connected
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+logging.getLogger('').addHandler(console)
 
 class P4Agent:
     def __init__(self, master_host: str, master_port: int, workspace: str):
@@ -30,12 +45,12 @@ class P4Agent:
         
         while retry_count < max_retries:
             try:
-                print(f"[Agent] Connecting to Master at {self.master_host}:{self.master_port}...")
+                logging.info(f"Connecting to Master at {self.master_host}:{self.master_port}...")
                 self.reader, self.writer = await asyncio.open_connection(
                     self.master_host, 
                     self.master_port
                 )
-                print(f"[Agent] Connected!")
+                logging.info(f"Connected!")
                 
                 # Send REGISTER message
                 hostname = socket.gethostname()
@@ -56,10 +71,10 @@ class P4Agent:
             except Exception as e:
                 retry_count += 1
                 wait_time = min(2 ** retry_count, 30)
-                print(f"[Agent] Connection failed: {e}. Retrying in {wait_time}s...")
+                logging.error(f"Connection failed: {e}. Retrying in {wait_time}s...")
                 await asyncio.sleep(wait_time)
         
-        print("[Agent] Max retries reached. Giving up.")
+        logging.error("Max retries reached. Giving up.")
         return False
     
     async def send_message(self, data: dict):
@@ -71,7 +86,7 @@ class P4Agent:
             self.writer.write(message.encode('utf-8'))
             await self.writer.drain()
         except Exception as e:
-            print(f"[Agent] Error sending message: {e}")
+            logging.error(f"Error sending message: {e}")
             self.is_running = False
     
     async def receive_message(self) -> dict:
@@ -90,11 +105,19 @@ class P4Agent:
         command = data["command"]
         cwd = data.get("cwd", self.workspace)
         
+        # Ensure workspace directory exists
+        if cwd:
+            try:
+                os.makedirs(cwd, exist_ok=True)
+                logging.info(f"Working directory ensured: {cwd}")
+            except Exception as e:
+                logging.warning(f"Failed to create directory {cwd}: {e}")
+        
         # Merge environment variables
         env = os.environ.copy()
         env.update(data.get("env", {}))
         
-        print(f"[Agent] Executing cmd_id={cmd_id}: {command}")
+        logging.info(f"Executing cmd_id={cmd_id} in cwd={cwd}: {command}")
         
         try:
             # Create subprocess
@@ -107,6 +130,14 @@ class P4Agent:
             )
             
             self.running_commands[cmd_id] = process
+            
+            # Send CMD_STARTED with PID
+            await self.send_message({
+                "type": "CMD_STARTED",
+                "cmd_id": cmd_id,
+                "pid": process.pid
+            })
+            logging.info(f"Command {cmd_id} started with PID {process.pid}")
             
             # Stream stdout and stderr in parallel
             async def stream_output(stream, stream_type):
@@ -140,10 +171,10 @@ class P4Agent:
                 "exit_code": exit_code
             })
             
-            print(f"[Agent] Command {cmd_id} finished with exit_code={exit_code}")
+            logging.info(f"Command {cmd_id} finished with exit_code={exit_code}")
             
         except Exception as e:
-            print(f"[Agent] Error executing {cmd_id}: {e}")
+            logging.error(f"Error executing {cmd_id}: {e}")
             await self.send_message({
                 "type": "CMD_DONE",
                 "cmd_id": cmd_id,
@@ -160,9 +191,9 @@ class P4Agent:
             try:
                 process = self.running_commands[cmd_id]
                 process.send_signal(signal_num)
-                print(f"[Agent] Sent signal {signal_num} to cmd_id={cmd_id}")
+                logging.info(f"Sent signal {signal_num} to cmd_id={cmd_id}")
             except Exception as e:
-                print(f"[Agent] Failed to kill cmd_id={cmd_id}: {e}")
+                logging.error(f"Failed to kill cmd_id={cmd_id}: {e}")
     
     async def heartbeat_loop(self):
         """Send periodic heartbeats"""
@@ -189,16 +220,16 @@ class P4Agent:
                 elif msg_type == "KILL_CMD":
                     await self.handle_kill_cmd(message)
                 elif msg_type == "SHUTDOWN":
-                    print("[Agent] Received shutdown signal")
+                    logging.info("Received shutdown signal")
                     self.is_running = False
                     break
                     
             except ConnectionError:
-                print("[Agent] Connection lost")
+                logging.info("Connection lost")
                 self.is_running = False
                 break
             except Exception as e:
-                print(f"[Agent] Error in message loop: {e}")
+                logging.error(f"Error in message loop: {e}")
                 self.is_running = False
                 break
     
@@ -216,24 +247,28 @@ class P4Agent:
             if self.writer:
                 self.writer.close()
                 await self.writer.wait_closed()
-            print("[Agent] Stopped")
+            logging.info("Stopped")
 
 if __name__ == "__main__":
-    if len(sys.argv) < 4:
-        print("Usage: python agent_core.py <master_host> <master_port> <workspace>")
-        sys.exit(1)
-    
-    master_host = sys.argv[1]
-    master_port = int(sys.argv[2])
-    workspace = sys.argv[3]
-    
-    # Windows compatibility for asyncio loop policy if needed, though mostly for SSH usage
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-    agent = P4Agent(master_host, master_port, workspace)
     try:
+        logging.info(f"Agent starting with args: {sys.argv}")
+        
+        if len(sys.argv) < 4:
+            logging.error("Usage: python agent_core.py <master_host> <master_port> <workspace>")
+            sys.exit(1)
+        
+        master_host = sys.argv[1]
+        master_port = int(sys.argv[2])
+        workspace = sys.argv[3]
+        
+        # Windows compatibility for asyncio loop policy if needed
+        if sys.platform == 'win32':
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+        agent = P4Agent(master_host, master_port, workspace)
         asyncio.run(agent.run())
     except KeyboardInterrupt:
         pass
-
+    except Exception as e:
+        logging.critical(f"Fatal error: {traceback.format_exc()}")
+        sys.exit(1)
