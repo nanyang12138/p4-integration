@@ -188,14 +188,26 @@ class AgentServer:
         
     def wait_for_agent(self, agent_hint: str, timeout: float = 5.0) -> Optional[str]:
         """Wait for an expected agent to connect
-        Returns actual agent_id if connected, None if timeout"""
+        Returns actual agent_id if connected, None if timeout
+        
+        agent_hint can be hostname or IP address - we check both"""
         import time
         start = time.time()
         while time.time() - start < timeout:
-            # Check if any agent matches the hint (by hostname)
+            # Check if any agent matches the hint (by hostname, IP, or agent_id)
             for aid, conn in self.agents.items():
-                if agent_hint in aid or (conn.hostname and agent_hint in conn.hostname):
-                    # Found it!
+                # Check agent_id contains hint
+                if agent_hint in aid:
+                    if agent_hint in self.expected_agents:
+                        del self.expected_agents[agent_hint]
+                    return aid
+                # Check hostname contains hint
+                if conn.hostname and agent_hint in conn.hostname:
+                    if agent_hint in self.expected_agents:
+                        del self.expected_agents[agent_hint]
+                    return aid
+                # Check IP matches hint (important for IP-based SSH config)
+                if conn.ip and agent_hint == conn.ip:
                     if agent_hint in self.expected_agents:
                         del self.expected_agents[agent_hint]
                     return aid
