@@ -8,6 +8,7 @@ import uuid
 import re
 import queue
 import os
+import shlex
 import json
 from typing import Dict, Optional, List, Any
 from datetime import datetime
@@ -189,6 +190,9 @@ class JobStateMachine:
             logger.error(f"P4USER or P4PASSWD not configured in config.yaml!")
             return None
         
+        # Safely escape password for shell using shlex.quote
+        p4_password_safe = shlex.quote(p4_password)
+        
         # Hardcoded init script path
         init_script = "/proj/verif_release_ro/cbwa_initscript/current/cbwa_init.bash"
         
@@ -200,8 +204,8 @@ class JobStateMachine:
         
         # Build integrate command with explicit parameters
         integrate_cmd = ""
-        # Base P4 command with all explicit parameters (password in single quotes to handle special chars)
-        p4_base = f"{p4_bin} -p {p4_port} -u {p4_user} -c {p4_client} -P '{p4_password}'"
+        # Base P4 command with all explicit parameters (password safely quoted)
+        p4_base = f"{p4_bin} -p {p4_port} -u {p4_user} -c {p4_client} -P {p4_password_safe}"
         
         if branch_spec:
             # Branch mode
@@ -302,14 +306,14 @@ fi
 echo "CHANGELIST:$cl"
 """.strip()
         
-        # Build GET_LATEST_CL command (password in single quotes)
+        # Build GET_LATEST_CL command (password safely quoted)
         get_latest_cl_cmd = ""
         if branch_spec:
             # Get latest CL from branch spec
-            get_latest_cl_cmd = f"{p4_bin} -p {p4_port} -u {p4_user} -P '{p4_password}' branch -o {branch_spec} | grep '//' | head -n 1 | awk '{{print $1}}' | xargs -I {{}} {p4_bin} -p {p4_port} -u {p4_user} -P '{p4_password}' changes -m 1 -s submitted {{}} | awk '{{print $2}}'"
+            get_latest_cl_cmd = f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_safe} branch -o {branch_spec} | grep '//' | head -n 1 | awk '{{print $1}}' | xargs -I {{}} {p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_safe} changes -m 1 -s submitted {{}} | awk '{{print $2}}'"
         elif source:
             # Get latest CL from source path
-            get_latest_cl_cmd = f"{p4_bin} -p {p4_port} -u {p4_user} -P '{p4_password}' changes -m 1 -s submitted {source}... | awk '{{print $2}}'"
+            get_latest_cl_cmd = f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_safe} changes -m 1 -s submitted {source}... | awk '{{print $2}}'"
         
         # Build P4PUSH command with trial support
         trial_flag = "-trial" if spec.get("trial") else ""
