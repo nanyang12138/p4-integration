@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request, current_app, redirect, url_for
 from app import state_machine, agent_server
 from app.master.bootstrapper import Bootstrapper
 import asyncio
@@ -113,6 +113,9 @@ def continue_job(job_id):
         state_machine.user_continue(job_id),
         agent_server._loop
     )
+    # If form submission (Accept: text/html), redirect back to job detail page
+    if 'text/html' in request.headers.get('Accept', ''):
+        return redirect(url_for('job_detail', job_id=job_id))
     return jsonify({"status": "continued"})
 
 @bp.route('/agents', methods=['GET'])

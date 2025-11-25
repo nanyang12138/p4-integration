@@ -2,8 +2,9 @@
 Flask Server Routes (Refactored for Architecture v2)
 Adapts existing UI routes to use JobStateMachine.
 """
-from flask import render_template, request, redirect, url_for, jsonify, current_app
+from flask import render_template, request, redirect, url_for, jsonify, current_app, send_file
 import uuid
+import os
 from datetime import datetime
 
 def register_routes(app, state_machine):
@@ -123,3 +124,16 @@ def register_routes(app, state_machine):
         app.logger.info(f"Job {job_id} detail page - agent_id: {agent_id}, connected: {connected_agents}")
         
         return render_template('job_detail.html', job=job)
+
+    @app.route('/jobs/<job_id>/logs/download')
+    def download_job_logs(job_id):
+        """Download job logs as txt file"""
+        paths = state_machine.get_log_file_path(job_id)
+        txt_path = paths.get("txt")
+        if txt_path and os.path.exists(txt_path):
+            return send_file(
+                txt_path, 
+                as_attachment=True, 
+                download_name=f"job_{job_id[:8]}_logs.txt"
+            )
+        return "Log file not found", 404

@@ -8,6 +8,7 @@ import uuid
 import re
 import queue
 import os
+import json
 from typing import Dict, Optional, List, Any
 from datetime import datetime
 from enum import Enum
@@ -311,16 +312,20 @@ echo "CHANGELIST:$cl"
             logger.info(f"Job {job_id} stage {stage} started with PID {pid}")
             
     async def _handle_log(self, message: dict):
-        """Store logs"""
+        """Store logs in memory and persist to file"""
         cmd_id = message.get("cmd_id")
         if cmd_id in self.cmd_to_job:
             job_id = self.cmd_to_job[cmd_id]
             entry = {
+                "cmd_id": cmd_id,  # Add cmd_id for filtering
                 "stream": message.get("stream"),
                 "data": message.get("data"),
                 "timestamp": datetime.now().isoformat()
             }
             self.logs[job_id].append(entry)
+            
+            # Persist to file
+            self._append_log_to_file(job_id, entry)
             
     async def _handle_cmd_done(self, message: dict):
         """Handle command completion"""
@@ -395,35 +400,42 @@ echo "CHANGELIST:$cl"
     
     def _analyze_resolve_check(self, job_id: str) -> Stage:
         """Analyze 'p4 resolve -n' output"""
-        # Aggregate stdout
-        job_logs = self.logs.get(job_id, [])
-        # Filter logs for current command? Ideally yes, but simpler to look at tail 
-        # or filter by current_cmd_id if we tracked it in logs (we didn't explicitly, but we can)
-        # For now, assume logs are append-only and we look at the recent ones or full log if simpler.
-        # Better: filter logs by current_cmd_id
+        job = self.jobs[job_id]
+        current_cmd_id = job.get("current_cmd_id")
         
-        current_cmd_id = self.jobs[job_id].get("current_cmd_id")
-        # We need to look up logs? We didn't store cmd_id in log entry in _handle_log above...
-        # Let's fix _handle_log to verify
+        # Only analyze output from the current command (not historical logs)
+        output = "".join([
+            l["data"] + "\n" for l in self.logs[job_id] 
+            if l["stream"] == "stdout" and l.get("cmd_id") == current_cmd_id
+        ])
         
-        output = ""
-        # Re-read logs - actually we didn't save cmd_id in the list entry, let's rely on 
-        # the fact that stages are sequential.
-        # Real implementation should store cmd_id in log entry.
+        # Parse conflict files from output
+        # p4 resolve -n output format: "//depot/path/file.cpp - merging //from/path/file.cpp"
+        conflicts = []
+        for line in output.split('\n'):
+            line_lower = line.lower()
+            if 'merging' in line_lower or 'resolve skipped' in line_lower:
+                # Extract file path (starts with //)
+                match = re.match(r'^(//[^\s]+)', line)
+                if match:
+                    conflicts.append(match.group(1))
         
-        # For this implementation, let's just grab all stdout.
-        output = "".join([l["data"] for l in self.logs[job_id] if l["stream"] == "stdout"])
+        # Store conflicts in job for UI display
+        job["conflicts"] = conflicts
         
-        # Check for "No file(s) to resolve"
+        # Check for "No file(s) to resolve" - means all resolved
         if "No file(s) to resolve" in output:
+            job["conflicts"] = []
+            logger.info(f"Job {job_id}: No conflicts remaining, proceeding to PRE_SUBMIT")
             return Stage.PRE_SUBMIT
         
-        # Check for "merging" or similar conflict indicators
-        if "merging" in output or "resolve skipped" in output:
+        # If we found conflicts, go to NEEDS_RESOLVE
+        if conflicts:
+            logger.info(f"Job {job_id}: Found {len(conflicts)} conflicts: {conflicts[:5]}...")
             return Stage.NEEDS_RESOLVE
             
-        # Default fallback - if empty or unclear, usually means done or nothing to do
-        # But "No file(s)" is standard p4 output.
+        # Default fallback - if empty or unclear, assume resolved
+        job["conflicts"] = []
         return Stage.PRE_SUBMIT
 
     def _analyze_shelve_output(self, job_id: str) -> Stage:
@@ -485,6 +497,41 @@ echo "CHANGELIST:$cl"
         if job_id in self.monitor_tasks:
             self.monitor_tasks[job_id].cancel()
             del self.monitor_tasks[job_id]
+
+    def _get_log_dir(self, job_id: str) -> str:
+        """Get log directory for a job"""
+        log_dir = os.path.join(self.config.get("data_dir", "data"), "logs", job_id)
+        os.makedirs(log_dir, exist_ok=True)
+        return log_dir
+
+    def _append_log_to_file(self, job_id: str, entry: dict):
+        """Append log entry to both txt and json files"""
+        try:
+            log_dir = self._get_log_dir(job_id)
+            
+            # Append to txt (human readable)
+            txt_path = os.path.join(log_dir, "output.txt")
+            with open(txt_path, "a", encoding="utf-8") as f:
+                stream = entry.get("stream", "")
+                data = entry.get("data", "")
+                prefix = "[ERR] " if stream == "stderr" else ""
+                f.write(f"{prefix}{data}\n")
+            
+            # Append to jsonl (structured)
+            jsonl_path = os.path.join(log_dir, "output.jsonl")
+            with open(jsonl_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception as e:
+            logger.error(f"Failed to persist log for job {job_id}: {e}")
+
+    def get_log_file_path(self, job_id: str) -> dict:
+        """Get paths to log files"""
+        log_dir = self._get_log_dir(job_id)
+        return {
+            "txt": os.path.join(log_dir, "output.txt"),
+            "jsonl": os.path.join(log_dir, "output.jsonl"),
+            "dir": log_dir
+        }
 
     async def user_continue(self, job_id: str):
         """User clicked Continue button"""
