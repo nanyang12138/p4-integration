@@ -227,7 +227,15 @@ class JobStateMachine:
         shelve_cmd = f"""
 # Create changelist with full description
 DESC=$'\\tREVIEW_INTEGRATE\\n\\t[INFRAFIX] Mass integration from {source or branch_spec or 'unknown'} @{source_rev_change or 'latest'}\\n\\tSPEC: {spec.get('spec_name', 'N/A')}'
-cl=$({p4_base} change -o | awk -v desc="$DESC" '/^Description:/{{print; print desc; in_desc=1; next}} in_desc && /^\\t/{{next}} in_desc && /^[^\\t]/{{in_desc=0}} {{print}}' | {p4_base} change -i | grep -oP 'Change \\\\K\\\\d+')
+cl=$({p4_base} change -o | awk -v desc="$DESC" '/^Description:/{{print; print desc; in_desc=1; next}} in_desc && /^\\t/{{next}} in_desc && /^[^\\t]/{{in_desc=0}} {{print}}' | {p4_base} change -i | awk '/^Change / {{print $2}}')
+
+# Check if changelist was created
+if [ -z "$cl" ]; then
+  echo "ERROR: Failed to create changelist"
+  exit 1
+fi
+
+echo "Created changelist: $cl"
 
 # Move all opened files to new CL
 {p4_base} reopen -c $cl //...
