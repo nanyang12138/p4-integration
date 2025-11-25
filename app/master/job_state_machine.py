@@ -139,10 +139,19 @@ class JobStateMachine:
         if command:
             await self._execute_command(job_id, command)
         else:
-            # If no command (e.g. some intermediate state or hook missing), skip or error
-            # For now, assume ERROR if command missing unless handled
-            logger.error(f"No command defined for stage {next_stage}")
-            await self.transition_to(job_id, Stage.ERROR)
+            # If no command defined, check if it's an optional stage
+            if next_stage == Stage.PRE_SUBMIT:
+                # PRE_SUBMIT is optional - skip to SHELVE if no hook defined
+                logger.info(f"No pre-submit hook defined for job {job_id}, skipping to SHELVE")
+                await self.transition_to(job_id, Stage.SHELVE)
+            elif next_stage == Stage.NC_FIX:
+                # NC_FIX is optional - skip to SHELVE if no fix script
+                logger.info(f"No name_check fix script defined for job {job_id}, skipping to SHELVE")
+                await self.transition_to(job_id, Stage.SHELVE)
+            else:
+                # Required stage has no command - this is an error
+                logger.error(f"No command defined for stage {next_stage}")
+                await self.transition_to(job_id, Stage.ERROR)
 
     def _get_stage_command(self, job: dict, stage: Stage) -> Optional[str]:
         """Get shell command for stage"""
