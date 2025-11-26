@@ -137,6 +137,14 @@ def register_routes(app, state_machine):
                     "password": p4_password,
                     "client": p4_client,
                     "port": p4_port
+                },
+                # Connection info for display in job details
+                "connection": {
+                    "ssh_host": ssh_host,
+                    "ssh_port": ssh_port,
+                    "master_host": master_host,
+                    "master_port": master_port,
+                    "python_path": python_path
                 }
             }
             
@@ -212,12 +220,65 @@ def register_routes(app, state_machine):
                 
             except Exception as e:
                 current_app.logger.error(f"Failed to start job: {e}")
+                error_str = str(e)
+                
+                # Determine error type and provide helpful context
+                causes = []
+                debug_steps = []
+                
+                if 'SSH' in error_str or 'Authentication' in error_str or 'timeout' in error_str.lower():
+                    # SSH connection error
+                    causes = [
+                        f'SSH authentication failed for user <code>{p4_user}</code>',
+                        f'SSH host <code>{ssh_host}</code> is unreachable or port <code>{ssh_port}</code> is blocked',
+                        'Network timeout - the remote machine may be slow to respond',
+                        'Incorrect password or the user does not have SSH access'
+                    ]
+                    debug_steps = [
+                        {
+                            'description': 'Test SSH connection manually',
+                            'command': f'ssh -p {ssh_port} {p4_user}@{ssh_host}'
+                        },
+                        {
+                            'description': 'Check if SSH port is open',
+                            'command': f'nc -zv {ssh_host} {ssh_port}'
+                        },
+                        {
+                            'description': 'Verify your credentials are correct in Settings'
+                        }
+                    ]
+                elif 'Agent' in error_str or 'PID' in error_str:
+                    # Agent startup error
+                    causes = [
+                        f'Python is not installed or not found at <code>{python_path}</code> on remote machine',
+                        'The agent script failed to start',
+                        'Permission issues on the remote machine'
+                    ]
+                    debug_steps = [
+                        {
+                            'description': 'Check Python availability on remote machine',
+                            'command': f'ssh {p4_user}@{ssh_host} "which python3 && python3 --version"'
+                        },
+                        {
+                            'description': 'Check agent boot logs',
+                            'command': f'ssh {p4_user}@{ssh_host} "cat /tmp/p4_agent_boot_*.log | tail -50"'
+                        }
+                    ]
+                else:
+                    # Generic error
+                    causes = [
+                        'An unexpected error occurred during job initialization',
+                        'Check the technical details below for more information'
+                    ]
+                
                 return render_template('error.html',
                     error_type='error',
                     error_title='Failed to Start Job',
-                    error_subtitle='An unexpected error occurred',
-                    error_message=f'The job could not be started due to an error.',
-                    technical_details=str(e),
+                    error_subtitle=f'Error connecting to {ssh_host}' if ssh_host else 'An unexpected error occurred',
+                    error_message=f'The job could not be started. Please check the details below and try again.',
+                    causes=causes,
+                    debug_steps=debug_steps if debug_steps else None,
+                    technical_details=error_str,
                     retry_url='/admin/submit'
                 ), 500
                 

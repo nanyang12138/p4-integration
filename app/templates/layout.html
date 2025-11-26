@@ -42,6 +42,11 @@
       @keyframes spin { to { transform: rotate(360deg); } }
       .animate-spin-custom { animation: spin 1s linear infinite; }
       
+      /* Details chevron rotation */
+      details[open] .details-chevron { transform: rotate(90deg); }
+      details summary::-webkit-details-marker { display: none; }
+      details summary { list-style: none; }
+      
       /* Toast notification */
       .toast {
         position: fixed; bottom: 24px; right: 24px;

@@ -138,6 +138,22 @@ class AgentServer:
                 del self.agents[agent_id]
             connection.close()
             logger.info(f"Agent {agent_id} disconnected")
+            
+            # Notify event handlers about agent disconnection
+            for handler in self.event_handlers:
+                try:
+                    disconnect_event = {
+                        "type": "AGENT_DISCONNECTED",
+                        "agent_id": agent_id,
+                        "hostname": connection.hostname,
+                        "workspace": connection.workspace
+                    }
+                    if asyncio.iscoroutinefunction(handler.handle_agent_event):
+                        await handler.handle_agent_event(agent_id, disconnect_event)
+                    else:
+                        handler.handle_agent_event(agent_id, disconnect_event)
+                except Exception as notify_err:
+                    logger.error(f"Error notifying handler about agent disconnect: {notify_err}")
     
     async def send_to_agent(self, agent_id: str, message: dict):
         """Send message to specific Agent"""

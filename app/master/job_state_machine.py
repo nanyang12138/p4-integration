@@ -117,10 +117,12 @@ class JobStateMachine:
 
         if next_stage == Stage.DONE:
             logger.info(f"Job {job_id} completed successfully")
+            await self._shutdown_agent(job_id, "Job completed successfully")
             return
             
         if next_stage == Stage.ERROR:
             logger.error(f"Job {job_id} failed")
+            await self._shutdown_agent(job_id, "Job failed")
             return
 
         # Execute command for the new stage
@@ -133,7 +135,10 @@ class JobStateMachine:
                 command = command.replace("{changelist}", str(changelist))
                 logger.info(f"P4PUSH command with changelist {changelist}: {command}")
             else:
+                error_msg = f"[FLOW ERROR] No changelist available for P4PUSH stage"
                 logger.error(f"No changelist available for P4PUSH in job {job_id}")
+                self._add_log_entry(job_id, "stderr", error_msg)
+                job["error"] = error_msg
                 await self.transition_to(job_id, Stage.ERROR)
                 return
         
@@ -147,17 +152,27 @@ class JobStateMachine:
                 await self.transition_to(job_id, Stage.SHELVE)
             else:
                 # Required stage has no command - this is an error
+                # Note: If config validation failed in _get_stage_command, job["error"] is already set
+                if not job.get("error"):
+                    error_msg = f"[FLOW ERROR] No command defined for stage {next_stage.value}"
+                    self._add_log_entry(job_id, "stderr", error_msg)
+                    job["error"] = error_msg
                 logger.error(f"No command defined for stage {next_stage}")
                 await self.transition_to(job_id, Stage.ERROR)
 
     def _get_stage_command(self, job: dict, stage: Stage) -> Optional[str]:
         """Get shell command for stage"""
         spec = job["spec"]
+        job_id = job.get("job_id")
         
         # Get workspace
         workspace = spec.get("workspace", "")
         if not workspace:
-            logger.error("No workspace specified in job spec!")
+            error_msg = "[CONFIG ERROR] No workspace specified in job spec!"
+            logger.error(error_msg)
+            if job_id:
+                self._add_log_entry(job_id, "stderr", error_msg)
+                job["error"] = error_msg
             return None
         
         # Get P4 configuration from job spec
@@ -168,18 +183,34 @@ class JobStateMachine:
         p4_user = p4_config.get("user", "")
         p4_password = p4_config.get("password", "")
         
-        # Validate required P4 fields
+        # Validate required P4 fields with user-visible error logging
         if not p4_port:
-            logger.error("P4PORT not provided in job spec!")
+            error_msg = "[CONFIG ERROR] P4PORT not provided in job spec!"
+            logger.error(error_msg)
+            if job_id:
+                self._add_log_entry(job_id, "stderr", error_msg)
+                job["error"] = error_msg
             return None
         if not p4_client:
-            logger.error("P4CLIENT not provided in job spec!")
+            error_msg = "[CONFIG ERROR] P4CLIENT not provided in job spec!"
+            logger.error(error_msg)
+            if job_id:
+                self._add_log_entry(job_id, "stderr", error_msg)
+                job["error"] = error_msg
             return None
         if not p4_user:
-            logger.error("P4USER not provided in job spec!")
+            error_msg = "[CONFIG ERROR] P4USER not provided in job spec!"
+            logger.error(error_msg)
+            if job_id:
+                self._add_log_entry(job_id, "stderr", error_msg)
+                job["error"] = error_msg
             return None
         if not p4_password:
-            logger.error("P4PASSWD not provided in job spec!")
+            error_msg = "[CONFIG ERROR] P4PASSWD not provided in job spec!"
+            logger.error(error_msg)
+            if job_id:
+                self._add_log_entry(job_id, "stderr", error_msg)
+                job["error"] = error_msg
             return None
         
         logger.info(f"Using P4 - binary: {p4_bin}, client: {p4_client}, port: {p4_port}, user: {p4_user}")
@@ -352,9 +383,43 @@ echo "CHANGELIST:$cl"
             })
             logger.info(f"Sent command {cmd_id} to agent for job {job_id}")
         except Exception as e:
+            error_msg = f"[NETWORK ERROR] Failed to send command to agent: {e}"
             logger.error(f"Failed to send command to agent: {e}")
+            self._add_log_entry(job_id, "stderr", error_msg)
+            job["error"] = error_msg
             await self.transition_to(job_id, Stage.ERROR)
     
+    async def _shutdown_agent(self, job_id: str, reason: str = ""):
+        """Send shutdown signal to the agent associated with a job.
+        
+        Called when job enters terminal state (DONE or ERROR) to clean up
+        the remote agent process and free resources.
+        """
+        job = self.jobs.get(job_id)
+        if not job:
+            return
+        
+        agent_id = job.get("agent_id")
+        if not agent_id:
+            logger.warning(f"Job {job_id} has no agent_id, cannot send shutdown")
+            return
+        
+        # Check if agent is still connected
+        if agent_id not in self.agent_server.agents:
+            logger.info(f"Agent {agent_id} already disconnected, no shutdown needed")
+            return
+        
+        try:
+            await self.agent_server.send_to_agent(agent_id, {
+                "type": "SHUTDOWN",
+                "reason": reason
+            })
+            self._add_log_entry(job_id, "stdout", f"[INFO] Agent shutdown signal sent ({reason})")
+            logger.info(f"Sent SHUTDOWN to agent {agent_id} for job {job_id}: {reason}")
+        except Exception as e:
+            logger.warning(f"Failed to send shutdown to agent {agent_id}: {e}")
+            # Not a critical error - agent might already be disconnected
+
     async def handle_agent_event(self, agent_id: str, message: dict):
         """Handle incoming events from Agent"""
         msg_type = message.get("type")
@@ -367,6 +432,8 @@ echo "CHANGELIST:$cl"
             await self._handle_cmd_done(message)
         elif msg_type == "AGENT_TIMEOUT":
             await self._handle_agent_timeout(agent_id, message)
+        elif msg_type == "AGENT_DISCONNECTED":
+            await self._handle_agent_disconnected(agent_id, message)
     
     async def _handle_agent_timeout(self, agent_id: str, message: dict):
         """Handle agent timeout - fail all jobs associated with this agent"""
@@ -398,6 +465,43 @@ echo "CHANGELIST:$cl"
             
             logger.error(f"Job {job_id} failed due to agent timeout")
     
+    async def _handle_agent_disconnected(self, agent_id: str, message: dict):
+        """Handle agent disconnection - log to affected jobs but don't fail them immediately
+        
+        Unlike timeout, disconnection might be intentional (job completed) or due to network issues.
+        We log the event but let the job continue if it's already in a terminal state.
+        """
+        logger.info(f"Agent {agent_id} disconnected: {message}")
+        
+        # Find all jobs using this agent that are still running
+        affected_jobs = [
+            job_id for job_id, job in self.jobs.items()
+            if job.get("agent_id") == agent_id and job.get("stage") not in [Stage.DONE.value, Stage.ERROR.value]
+        ]
+        
+        for job_id in affected_jobs:
+            job = self.jobs[job_id]
+            current_stage = job.get("stage", "unknown")
+            
+            # Log the disconnection to user-visible log
+            disconnect_msg = f"[CONNECTION] Agent disconnected (hostname: {message.get('hostname', 'unknown')})"
+            self._add_log_entry(job_id, "stderr", disconnect_msg)
+            
+            # If job was actively running a command, mark it as failed
+            if job.get("current_cmd_id"):
+                error_msg = f"Agent connection lost during stage {current_stage}"
+                self._add_log_entry(job_id, "stderr", f"[CONNECTION ERROR] {error_msg}")
+                job["error"] = error_msg
+                job["stage"] = Stage.ERROR.value
+                job["updated_at"] = datetime.now().isoformat()
+                job["history"].append({
+                    "from": current_stage,
+                    "to": Stage.ERROR.value,
+                    "at": datetime.now().isoformat(),
+                    "reason": "agent_disconnected"
+                })
+                logger.error(f"Job {job_id} failed due to agent disconnection during active command")
+
     async def _handle_cmd_started(self, message: dict):
         """Handle command started - store PID"""
         cmd_id = message.get("cmd_id")
@@ -436,6 +540,7 @@ echo "CHANGELIST:$cl"
         """Handle command completion"""
         cmd_id = message.get("cmd_id")
         exit_code = message.get("exit_code")
+        agent_error = message.get("error")  # Error message from agent (e.g., path not found)
         
         if cmd_id not in self.cmd_to_job:
             return
@@ -445,6 +550,20 @@ echo "CHANGELIST:$cl"
         current_stage = Stage(job["stage"])
         
         logger.info(f"Command {cmd_id} finished: code={exit_code}, job={job_id}, stage={current_stage.value}")
+        
+        # Log agent errors and non-zero exit codes to user-visible log
+        if exit_code != 0:
+            if agent_error:
+                # Agent sent a specific error message (e.g., FileNotFoundError, PermissionError)
+                error_msg = f"[AGENT ERROR] {agent_error}"
+                self._add_log_entry(job_id, "stderr", error_msg)
+                job["error"] = error_msg
+            else:
+                # Command failed but no specific error from agent
+                error_msg = f"[COMMAND FAILED] Stage {current_stage.value} exited with code {exit_code}"
+                self._add_log_entry(job_id, "stderr", error_msg)
+                if not job.get("error"):  # Don't overwrite more specific errors
+                    job["error"] = error_msg
         
         next_stage = await self._decide_next_stage(job_id, current_stage, exit_code)
         if next_stage:
@@ -499,7 +618,12 @@ echo "CHANGELIST:$cl"
             logger.info(f"Got latest changelist {cl_number} for job {job_id}")
             return Stage.SYNC
         else:
+            # Truncate output for display
+            output_preview = stdout_output[:200] if len(stdout_output) > 200 else stdout_output
+            error_msg = f"[PARSE ERROR] Failed to parse changelist from GET_LATEST_CL output: '{output_preview}'"
             logger.error(f"Failed to parse changelist from output: {stdout_output}")
+            self._add_log_entry(job_id, "stderr", error_msg)
+            job["error"] = error_msg
             return Stage.ERROR
     
     def _analyze_resolve_check(self, job_id: str) -> Stage:
@@ -558,16 +682,19 @@ echo "CHANGELIST:$cl"
         ]
         stdout_output = "".join(current_cmd_logs)
         
-        import re
         cl_match = re.search(r'CHANGELIST:(\d+)', stdout_output)
         if cl_match:
             changelist = int(cl_match.group(1))
             job["changelist"] = changelist
             logger.info(f"Parsed changelist {changelist} from SHELVE output for job {job_id}")
         else:
+            # Truncate output for display
+            output_preview = stdout_output[:200] if len(stdout_output) > 200 else stdout_output
+            error_msg = f"[PARSE ERROR] Failed to parse changelist from SHELVE output. Expected 'CHANGELIST:<number>' but got: '{output_preview}'"
             logger.error(f"Failed to parse changelist from SHELVE output for job {job_id}")
-            # Log what we received for debugging
             logger.error(f"SHELVE stdout was: {stdout_output[:500]}...")
+            self._add_log_entry(job_id, "stderr", error_msg)
+            job["error"] = error_msg
             return Stage.ERROR
         
         return Stage.P4PUSH
@@ -607,6 +734,39 @@ echo "CHANGELIST:$cl"
         if job_id in self.monitor_tasks:
             self.monitor_tasks[job_id].cancel()
             del self.monitor_tasks[job_id]
+
+    def _add_log_entry(self, job_id: str, stream: str, data: str):
+        """Add a log entry to a job's log (both in-memory and persisted to file).
+        
+        This is the unified interface for adding system-level logs that should be
+        visible to users in the UI. Use this for:
+        - Configuration errors
+        - Flow/transition errors
+        - Agent errors
+        - Parsing errors
+        
+        Args:
+            job_id: The job ID to add the log to
+            stream: 'stdout' or 'stderr' (stderr will be highlighted as error in UI)
+            data: The log message content
+        """
+        if job_id not in self.logs:
+            self.logs[job_id] = []
+        
+        entry = {
+            "cmd_id": None,  # System-generated logs don't have a cmd_id
+            "stream": stream,
+            "data": data,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        self.logs[job_id].append(entry)
+        self._append_log_to_file(job_id, entry)
+        
+        # Also emit SSE event for real-time updates
+        self._emit_sse_event(job_id, "log", {"stream": stream, "data": data})
+        
+        logger.info(f"[Job {job_id}] {stream.upper()}: {data}")
 
     def _get_log_dir(self, job_id: str) -> str:
         """Get log directory for a job"""

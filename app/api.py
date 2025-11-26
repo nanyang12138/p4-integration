@@ -186,6 +186,15 @@ def retry_job(job_id):
                 "error": f"Agent failed to connect. PID: {pid}, Hint: {agent_hint}. Check Settings and network connectivity."
             }), 504
         
+        # Update spec.connection with current SSH settings (in case they changed)
+        spec["connection"] = {
+            "ssh_host": ssh_host,
+            "ssh_port": ssh_port,
+            "master_host": master_host,
+            "master_port": master_port,
+            "python_path": python_path
+        }
+        
         # Create and start the new job with correct agent_id
         state_machine.create_job(new_job_id, found_agent, spec)
         asyncio.run_coroutine_threadsafe(

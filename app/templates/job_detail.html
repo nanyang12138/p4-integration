@@ -85,6 +85,76 @@
         </button>
       </div>
 
+      <!-- Connection Info (Collapsible) -->
+      <details class="mt-4 pt-4 border-t border-slate-100">
+        <summary class="cursor-pointer text-xs font-medium text-slate-500 hover:text-slate-700 flex items-center gap-2 select-none">
+          <i class="fa-solid fa-chevron-right text-[10px] transition-transform details-chevron"></i>
+          <i class="fa-solid fa-plug text-slate-400"></i>
+          Connection Info
+        </summary>
+        <div class="mt-3 space-y-2 text-xs">
+          <!-- SSH Info -->
+          {% if job.spec and job.spec.connection %}
+          <div class="bg-slate-50 rounded-lg p-3 space-y-2">
+            <div class="flex justify-between items-center">
+              <span class="text-slate-500 flex-shrink-0">SSH Host</span>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 truncate max-w-[140px] cursor-pointer hover:bg-slate-50" title="{{ job.spec.connection.ssh_host }}:{{ job.spec.connection.ssh_port }}" onclick="copyToClipboard('{{ job.spec.connection.ssh_host }}:{{ job.spec.connection.ssh_port }}')">{{ job.spec.connection.ssh_host }}:{{ job.spec.connection.ssh_port }}</code>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-500 flex-shrink-0">Master</span>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 truncate max-w-[140px] cursor-pointer hover:bg-slate-50" title="{{ job.spec.connection.master_host }}:{{ job.spec.connection.master_port }}" onclick="copyToClipboard('{{ job.spec.connection.master_host }}:{{ job.spec.connection.master_port }}')">{{ job.spec.connection.master_host }}:{{ job.spec.connection.master_port }}</code>
+            </div>
+            <!-- Python Path - full width -->
+            <div class="pt-1 border-t border-slate-200">
+              <span class="text-slate-500 block mb-1">Python</span>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 block truncate cursor-pointer hover:bg-slate-50" title="{{ job.spec.connection.python_path or 'python3' }}" onclick="copyToClipboard('{{ job.spec.connection.python_path or 'python3' }}')">{{ job.spec.connection.python_path or 'python3' }}</code>
+            </div>
+          </div>
+          {% endif %}
+          
+          <!-- Workspace - full width layout -->
+          {% if job.spec and job.spec.workspace %}
+          <div class="bg-slate-50 rounded-lg p-3">
+            <span class="text-slate-500 block mb-1">Workspace</span>
+            <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 block truncate cursor-pointer hover:bg-slate-50" title="{{ job.spec.workspace }}" onclick="copyToClipboard('{{ job.spec.workspace }}')">{{ job.spec.workspace }}</code>
+          </div>
+          {% endif %}
+          
+          <!-- P4 Info -->
+          {% if job.spec and job.spec.p4 %}
+          <div class="bg-blue-50 rounded-lg p-3 space-y-2">
+            <div class="flex justify-between items-center">
+              <span class="text-blue-600 flex-shrink-0">P4 Port</span>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-blue-200 text-blue-700 truncate max-w-[140px] cursor-pointer hover:bg-blue-50" title="{{ job.spec.p4.port }}" onclick="copyToClipboard('{{ job.spec.p4.port }}')">{{ job.spec.p4.port }}</code>
+            </div>
+            <!-- P4 Client - full width -->
+            <div class="pt-1 border-t border-blue-200">
+              <span class="text-blue-600 block mb-1">P4 Client</span>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-blue-200 text-blue-700 block truncate cursor-pointer hover:bg-blue-50" title="{{ job.spec.p4.client }}" onclick="copyToClipboard('{{ job.spec.p4.client }}')">{{ job.spec.p4.client }}</code>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-blue-600 flex-shrink-0">P4 User</span>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-blue-200 text-blue-700">{{ job.spec.p4.user }}</code>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-blue-600 flex-shrink-0">P4 Password</span>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-blue-200 text-blue-700">
+                {% if job.spec.p4.password %}****{{ job.spec.p4.password[-3:] if job.spec.p4.password|length > 3 else '***' }}{% else %}-{% endif %}
+              </code>
+            </div>
+          </div>
+          {% endif %}
+          
+          <!-- Agent ID - full width -->
+          {% if job.agent_id %}
+          <div class="bg-green-50 rounded-lg p-3">
+            <span class="text-green-600 block mb-1">Agent ID</span>
+            <code class="bg-white px-1.5 py-0.5 rounded border border-green-200 text-green-700 block truncate cursor-pointer hover:bg-green-50 text-[10px]" title="{{ job.agent_id }}" onclick="copyToClipboard('{{ job.agent_id }}')">{{ job.agent_id }}</code>
+          </div>
+          {% endif %}
+        </div>
+      </details>
+
     </div>
 
     <!-- Actions Card -->
@@ -348,7 +418,33 @@
     btnSelectAll.textContent = 'Selected!'; setTimeout(()=>btnSelectAll.textContent='Select', 2000);
   });
 
-  // Log fetching and updating
+  // ========== Timer Management ==========
+  var timers = {
+    pageReload: null,
+    logFetch: null,
+    sourceCL: null,
+    processStatus: null
+  };
+  
+  // Check if job is in terminal state (no more updates expected)
+  function isTerminalState(status) {
+    var terminalStates = ['done', 'error', 'cancelled', 'failed'];
+    return terminalStates.indexOf((status || '').toLowerCase()) !== -1;
+  }
+  
+  // Stop all timers when job reaches terminal state
+  function stopAllTimers() {
+    if (timers.pageReload) { clearTimeout(timers.pageReload); timers.pageReload = null; }
+    if (timers.logFetch) { clearInterval(timers.logFetch); timers.logFetch = null; }
+    if (timers.sourceCL) { clearInterval(timers.sourceCL); timers.sourceCL = null; }
+    if (timers.processStatus) { clearInterval(timers.processStatus); timers.processStatus = null; }
+    console.log('[JobDetail] All timers stopped - job in terminal state');
+  }
+  
+  // Current job status (will be updated by SSE or API)
+  var currentStatus = "{{ job.status }}";
+
+  // ========== Log Fetching ==========
   var logOutput = document.getElementById('log-output');
   var logContainer = document.getElementById('log-container');
   var lastLogLength = 0;
@@ -401,11 +497,7 @@
     }
   }
 
-  // Fetch logs every 2 seconds
-  setInterval(fetchLogs, 2000);
-  fetchLogs(); // Initial fetch
-  
-  // Update source changelist display
+  // ========== Source CL Update ==========
   var sourceClValue = document.getElementById('source-cl-value');
   async function updateSourceCL() {
     try {
@@ -416,12 +508,16 @@
         sourceClValue.innerHTML = job.source_changelist;
         sourceClValue.className = 'font-mono font-medium text-slate-700';
       }
+      
+      // Check if status changed to terminal state
+      if (job.status && isTerminalState(job.status) && !isTerminalState(currentStatus)) {
+        currentStatus = job.status;
+        stopAllTimers();
+      }
     } catch (error) {
       console.error('Error updating source CL:', error);
     }
   }
-  setInterval(updateSourceCL, 2000);
-  updateSourceCL(); // Initial fetch
 
   // Status Indicator Logic
   var statusBadge = document.getElementById('status-badge');
@@ -475,7 +571,15 @@
       es.onmessage = function(ev){
         try{
           var data = JSON.parse(ev.data);
-          if(data) updateStatusUI(data.status, data.stage);
+          if(data) {
+            updateStatusUI(data.status, data.stage);
+            
+            // Check if status changed to terminal state
+            if (data.status && isTerminalState(data.status) && !isTerminalState(currentStatus)) {
+              currentStatus = data.status;
+              stopAllTimers();
+            }
+          }
         }catch(e){}
       };
     }
@@ -548,12 +652,24 @@
     }).catch(e => console.error(e));
   }
   
-  loadProcessStatus();
-  setInterval(loadProcessStatus, 5000);
+  // ========== Initialize Timers (only if not in terminal state) ==========
   updateStatusUI("{{ job.status }}", "{{ job.stage or '' }}");
-
-  // Log Auto Reload
-  setTimeout(function(){ location.reload(); }, 30000);
+  
+  // Initial data fetch
+  fetchLogs();
+  updateSourceCL();
+  loadProcessStatus();
+  
+  // Start timers only if job is not in terminal state
+  if (!isTerminalState(currentStatus)) {
+    timers.logFetch = setInterval(fetchLogs, 2000);
+    timers.sourceCL = setInterval(updateSourceCL, 2000);
+    timers.processStatus = setInterval(loadProcessStatus, 5000);
+    timers.pageReload = setTimeout(function(){ location.reload(); }, 30000);
+    console.log('[JobDetail] Timers started - job is running');
+  } else {
+    console.log('[JobDetail] Timers not started - job already in terminal state');
+  }
 })();
 </script>
 {% endblock %}
