@@ -72,8 +72,26 @@
             <a href="/admin" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 flex items-center gap-2">
               <i class="fa-solid fa-table-columns text-slate-400"></i> Dashboard
             </a>
+            <a href="/settings" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 flex items-center gap-2">
+              <i class="fa-solid fa-cog text-slate-400"></i> Settings
+            </a>
 
             <div class="h-6 w-px bg-slate-200"></div>
+
+            <!-- User Profile & Logout -->
+            {% if session.get('p4_user') %}
+            <div class="flex items-center gap-3 px-2">
+              <div class="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200">
+                <i class="fa-solid fa-user-circle text-slate-400"></i>
+                <span class="font-medium text-slate-800">{{ session.get('p4_user') }}</span>
+              </div>
+              <a href="/logout" class="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-red-600 transition-colors px-2 py-1.5 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-100" title="Switch User / Logout">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span>Exit</span>
+              </a>
+            </div>
+            <div class="h-6 w-px bg-slate-200"></div>
+            {% endif %}
 
             {% set cfg = (config or {}) %}
             {% set ssh_cfg = (cfg.get('ssh', {}) if cfg else {}) %}

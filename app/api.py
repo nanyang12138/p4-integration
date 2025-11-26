@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, current_app, redirect, url_for
+from flask import Blueprint, jsonify, request, current_app, redirect, url_for, session
 from app import state_machine, agent_server
 from app.master.bootstrapper import Bootstrapper
 import asyncio
@@ -8,76 +8,48 @@ bp = Blueprint('api', __name__, url_prefix='/api')
 
 @bp.route('/jobs', methods=['POST'])
 def create_job():
-    """Create and start a new job"""
-    data = request.json
-    job_id = data["job_id"]
-    spec = data["spec"]
+    """Create and start a new job via API
     
-    # Get SSH config from request or global config
+    Required fields in request JSON:
+    - job_id: Unique job identifier
+    - spec: Job specification (workspace, branch_spec, etc.)
+    - ssh_config: SSH configuration (host, port, user, password, python_path)
+    - master_host: Master host IP for agent callback
+    - master_port: Master port for agent callback (default: 9090)
+    """
+    data = request.json
+    job_id = data.get("job_id")
+    spec = data.get("spec")
+    
+    if not job_id or not spec:
+        return jsonify({"error": "job_id and spec are required"}), 400
+    
+    # SSH config must be provided in request (no longer in config.yaml)
     ssh_config = data.get("ssh_config")
     if not ssh_config:
-        app_config = current_app.config["APP_CONFIG"]
-        ssh_config = app_config.get("ssh")
+        return jsonify({"error": "ssh_config is required (host, port, user, password, python_path)"}), 400
     
-    if not ssh_config:
-        return jsonify({"error": "SSH config missing"}), 400
-        
+    # Master host/port must be provided
     master_host = data.get("master_host")
+    master_port = data.get("master_port", 9090)
     if not master_host:
-        # Try to guess master host IP or use config
-        # For now, default to config or require it
-        app_config = current_app.config["APP_CONFIG"]
-        master_host = app_config.get("agent", {}).get("master_host", "127.0.0.1")
+        return jsonify({"error": "master_host is required"}), 400
 
     try:
         # Deploy Agent
         bootstrapper = Bootstrapper(ssh_config)
-        # Note: bootstrapper returns PID, but we don't strictly need it for logic, 
-        # just to know it started. Agent will register itself.
-        bootstrapper.deploy_agent(
+        pid, agent_hint = bootstrapper.deploy_agent(
             master_host=master_host,
-            master_port=9090,
-            workspace=spec["workspace"]
+            master_port=master_port,
+            workspace=spec.get("workspace", ""),
+            agent_server=agent_server
         )
         
-        # Create Job
-        # We don't know the exact agent_id yet (it registers as hostname:ip), 
-        # but we can try to predict it or wait for it.
-        # BETTER: Wait for any agent to connect from that host?
-        # OR: Just create the job with pending agent_id, and let start_job bind it?
-        # For simplicity in this phase:
-        # We wait for the agent to connect.
-        
-        # Hack: we don't know exact agent_id key used by server until it connects.
-        # But we know the hostname from ssh_config.
-        expected_hostname = ssh_config["host"] # Hostname used for SSH might match
-        
-        # Poll for agent connection
-        found_agent_id = None
-        for _ in range(15):
-            agents = agent_server.get_connected_agents()
-            # Check if any agent matches our expected host or IP
-            # Simple check: most recently connected?
-            # Or check hostname in agent info
-            for aid, info in agents.items():
-                if info.get("hostname") == expected_hostname or \
-                   info.get("ip") == expected_hostname: # approximate check
-                    found_agent_id = aid
-                    break
-            if found_agent_id:
-                break
-            asyncio.run(asyncio.sleep(1))
+        # Wait for agent to connect
+        found_agent_id = agent_server.wait_for_agent(agent_hint, timeout=10.0)
             
         if not found_agent_id:
-            # Fallback: if running locally for dev, maybe it's already connected?
-            pass
-            
-        if not found_agent_id:
-             # If we can't find it, we can't send commands.
-             # But maybe it's slow to start. 
-             # We can create the job anyway and queue it?
-             # Current StateMachine expects agent_id.
-             return jsonify({"error": "Agent failed to connect within timeout"}), 504
+            return jsonify({"error": "Agent failed to connect within timeout"}), 504
 
         job = state_machine.create_job(job_id, found_agent_id, spec)
         
@@ -145,7 +117,12 @@ def cancel_job(job_id):
 
 @bp.route('/jobs/<job_id>/retry', methods=['POST'])
 def retry_job(job_id):
-    """Retry a failed job - creates a new job with the same spec"""
+    """Retry a failed job - creates a new job with the same spec
+    
+    SSH/Agent config is retrieved from:
+    1. Request JSON body (if provided)
+    2. Flask session (fallback - same as job submission)
+    """
     try:
         # Get the original job
         job = state_machine.get_job(job_id)
@@ -159,19 +136,44 @@ def retry_job(job_id):
         if not spec:
             return jsonify({"error": "Original job has no spec"}), 400
         
-        # Get SSH config
-        app_config = current_app.config["APP_CONFIG"]
-        ssh_config = app_config.get("ssh")
-        master_host = app_config.get("agent", {}).get("master_host", "127.0.0.1")
+        # Get SSH/Agent config from request body or session
+        data = request.json if request.is_json else {}
         
-        if not ssh_config:
-            return jsonify({"error": "SSH config missing"}), 500
+        # Try request body first, then fall back to session
+        ssh_host = data.get("ssh_host") or session.get('ssh_host')
+        ssh_port = data.get("ssh_port") or session.get('ssh_port', 22)
+        master_host = data.get("master_host") or session.get('master_host')
+        master_port = data.get("master_port") or session.get('master_port', 9090)
+        python_path = data.get("python_path") or session.get('python_path', 'python3')
+        
+        # Get P4 credentials from session (required for SSH auth)
+        p4_user = session.get('p4_user')
+        p4_password = session.get('p4_password')
+        
+        if not ssh_host or not master_host:
+            return jsonify({
+                "error": "SSH/Agent settings not configured. Please go to Settings page first."
+            }), 400
+        
+        if not p4_user or not p4_password:
+            return jsonify({
+                "error": "Not logged in. Please login first."
+            }), 401
+        
+        # Build SSH config
+        ssh_config = {
+            "host": ssh_host,
+            "port": ssh_port,
+            "user": p4_user,
+            "password": p4_password,
+            "python_path": python_path
+        }
         
         # Deploy new agent
         bootstrapper = Bootstrapper(ssh_config)
         pid, agent_hint = bootstrapper.deploy_agent(
             master_host=master_host,
-            master_port=9090,
+            master_port=master_port,
             workspace=spec.get("workspace", ""),
             agent_server=agent_server
         )
@@ -181,7 +183,7 @@ def retry_job(job_id):
         
         if not found_agent:
             return jsonify({
-                "error": f"Agent failed to connect. PID: {pid}, Hint: {agent_hint}"
+                "error": f"Agent failed to connect. PID: {pid}, Hint: {agent_hint}. Check Settings and network connectivity."
             }), 504
         
         # Create and start the new job with correct agent_id

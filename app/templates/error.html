@@ -1,0 +1,129 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+  
+  <!-- Error Card -->
+  <div class="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+    
+    <!-- Header -->
+    <div class="px-6 py-5 {% if error_type == 'warning' %}bg-gradient-to-r from-amber-500 to-orange-500{% elif error_type == 'info' %}bg-gradient-to-r from-blue-500 to-cyan-500{% else %}bg-gradient-to-r from-red-500 to-rose-500{% endif %}">
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+          {% if error_type == 'warning' %}
+          <i class="fa-solid fa-triangle-exclamation text-white text-xl"></i>
+          {% elif error_type == 'info' %}
+          <i class="fa-solid fa-circle-info text-white text-xl"></i>
+          {% else %}
+          <i class="fa-solid fa-circle-xmark text-white text-xl"></i>
+          {% endif %}
+        </div>
+        <div>
+          <h1 class="text-xl font-bold text-white">{{ error_title or 'An Error Occurred' }}</h1>
+          <p class="text-white/80 text-sm mt-0.5">{{ error_subtitle or 'Something went wrong' }}</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Content -->
+    <div class="p-6 space-y-6">
+      
+      <!-- Main Message -->
+      {% if error_message %}
+      <div class="{% if error_type == 'warning' %}bg-amber-50 border-amber-200 text-amber-800{% elif error_type == 'info' %}bg-blue-50 border-blue-200 text-blue-800{% else %}bg-red-50 border-red-200 text-red-800{% endif %} border rounded-xl p-4">
+        <p class="text-sm leading-relaxed">{{ error_message }}</p>
+      </div>
+      {% endif %}
+      
+      <!-- Possible Causes -->
+      {% if causes %}
+      <div class="bg-slate-50 rounded-xl p-5 border border-slate-200">
+        <h3 class="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+          <i class="fa-solid fa-lightbulb text-amber-500"></i>
+          Possible Causes
+        </h3>
+        <ul class="space-y-2">
+          {% for cause in causes %}
+          <li class="flex items-start gap-2 text-sm text-slate-600">
+            <i class="fa-solid fa-chevron-right text-slate-400 mt-1 text-xs"></i>
+            <span>{{ cause | safe }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      
+      <!-- Debug Steps -->
+      {% if debug_steps %}
+      <div class="bg-slate-50 rounded-xl p-5 border border-slate-200">
+        <h3 class="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+          <i class="fa-solid fa-wrench text-blue-500"></i>
+          Debug Steps
+        </h3>
+        <ol class="space-y-3">
+          {% for step in debug_steps %}
+          <li class="text-sm">
+            <div class="flex items-start gap-3">
+              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">{{ loop.index }}</span>
+              <div class="flex-1">
+                <p class="text-slate-700 mb-1">{{ step.description }}</p>
+                {% if step.command %}
+                <div class="relative group">
+                  <code class="block bg-slate-800 text-green-400 px-3 py-2 rounded-lg text-xs font-mono overflow-x-auto">{{ step.command }}</code>
+                  <button onclick="copyToClipboard('{{ step.command | e }}')" class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded text-xs">
+                    <i class="fa-solid fa-copy"></i>
+                  </button>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+      {% endif %}
+      
+      <!-- Technical Details (Collapsible) -->
+      {% if technical_details %}
+      <details class="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
+        <summary class="px-5 py-3 cursor-pointer hover:bg-slate-100 transition-colors font-medium text-slate-700 text-sm flex items-center gap-2">
+          <i class="fa-solid fa-code text-slate-400"></i>
+          Technical Details
+          <i class="fa-solid fa-chevron-down ml-auto text-slate-400 text-xs"></i>
+        </summary>
+        <div class="px-5 pb-4 pt-2 border-t border-slate-200">
+          <pre class="bg-slate-800 text-slate-300 p-4 rounded-lg text-xs overflow-x-auto font-mono">{{ technical_details }}</pre>
+        </div>
+      </details>
+      {% endif %}
+      
+    </div>
+    
+    <!-- Footer Actions -->
+    <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+      <a href="/admin" class="text-sm text-slate-600 hover:text-slate-800 flex items-center gap-2 transition-colors">
+        <i class="fa-solid fa-arrow-left"></i>
+        Back to Dashboard
+      </a>
+      
+      <div class="flex gap-3">
+        {% if retry_url %}
+        <a href="{{ retry_url }}" class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm">
+          <i class="fa-solid fa-rotate-right mr-1.5"></i>
+          Try Again
+        </a>
+        {% endif %}
+        
+        {% if action_url and action_text %}
+        <a href="{{ action_url }}" class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm">
+          {{ action_text }}
+        </a>
+        {% endif %}
+      </div>
+    </div>
+    
+  </div>
+  
+</div>
+{% endblock %}
+

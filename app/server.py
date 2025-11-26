@@ -2,18 +2,64 @@
 Flask Server Routes (Refactored for Architecture v2)
 Adapts existing UI routes to use JobStateMachine.
 """
-from flask import render_template, request, redirect, url_for, jsonify, current_app, send_file
+from flask import render_template, request, redirect, url_for, jsonify, current_app, send_file, session
 import uuid
 import os
 from datetime import datetime
+from functools import wraps
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'p4_user' not in session:
+            return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
 
 def register_routes(app, state_machine):
     
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        if request.method == 'POST':
+            session['p4_user'] = request.form.get('p4_user')
+            session['p4_password'] = request.form.get('p4_password')
+            current_app.logger.info(f"Login: User={session['p4_user']}, Password length={len(session.get('p4_password', ''))}")
+            return redirect(url_for('admin_dashboard'))
+        return render_template('login.html')
+
+    @app.route('/logout')
+    def logout():
+        session.clear()
+        return redirect(url_for('login'))
+    
+    @app.route('/settings', methods=['GET', 'POST'])
+    @login_required
+    def settings():
+        message = None
+        message_type = None
+        
+        if request.method == 'POST':
+            # Save SSH/Agent settings to session
+            session['ssh_host'] = request.form.get('ssh_host', '').strip()
+            session['ssh_port'] = int(request.form.get('ssh_port', 22) or 22)
+            session['master_host'] = request.form.get('master_host', '').strip()
+            session['master_port'] = int(request.form.get('master_port', 9090) or 9090)
+            session['python_path'] = request.form.get('python_path', 'python3').strip() or 'python3'
+            
+            current_app.logger.info(f"Settings saved: ssh_host={session['ssh_host']}, master_host={session['master_host']}")
+            
+            message = "Settings saved successfully!"
+            message_type = "success"
+        
+        return render_template('settings.html', message=message, message_type=message_type)
+    
     @app.route('/')
+    @login_required
     def index():
         return redirect(url_for('admin_dashboard'))
 
     @app.route('/admin')
+    @login_required
     def admin_dashboard():
         # Fetch all jobs from state_machine
         jobs = list(state_machine.jobs.values())
@@ -22,32 +68,88 @@ def register_routes(app, state_machine):
         return render_template('admin.html', jobs=jobs)
 
     @app.route('/admin/submit', methods=['GET', 'POST'])
+    @login_required
     def admin_submit():
         if request.method == 'POST':
-            # Form submission
-            # Get default workspace from config
-            app_config = current_app.config["APP_CONFIG"]
-            default_workspace = app_config.get("workspace", {}).get("root", "")
+            # P4 Configuration from form and session
+            p4_user = session.get('p4_user')
+            p4_password = session.get('p4_password')
+            p4_client = request.form.get('p4_client')
+            p4_port = request.form.get('p4_port')
+            workspace = request.form.get('workspace', '').strip()
             
+            current_app.logger.info(f"Submit: p4_user={p4_user}, p4_password_len={len(p4_password) if p4_password else 0}, p4_client={p4_client}, p4_port={p4_port}")
+            
+            if not all([p4_user, p4_password, p4_client, p4_port]):
+                return render_template('error.html',
+                    error_type='warning',
+                    error_title='Missing P4 Configuration',
+                    error_subtitle='Required fields are not filled',
+                    error_message='Please provide P4 User, Password, Client, and Port to submit a job.',
+                    causes=[
+                        'You may not be logged in properly',
+                        'P4 Client or P4 Port fields are empty in the form'
+                    ],
+                    action_url='/admin/submit',
+                    action_text='Go Back to Form'
+                ), 400
+            
+            if not workspace:
+                return render_template('error.html',
+                    error_type='warning',
+                    error_title='Missing Workspace',
+                    error_subtitle='Workspace path is required',
+                    error_message='Please provide the workspace path on the remote machine.',
+                    action_url='/admin/submit',
+                    action_text='Go Back to Form'
+                ), 400
+
+            # SSH/Agent configuration from session
+            ssh_host = session.get('ssh_host')
+            ssh_port = session.get('ssh_port', 22)
+            master_host = session.get('master_host')
+            master_port = session.get('master_port', 9090)
+            python_path = session.get('python_path', 'python3')
+            
+            if not ssh_host or not master_host:
+                return render_template('error.html',
+                    error_type='warning',
+                    error_title='Settings Required',
+                    error_subtitle='SSH and Agent configuration is missing',
+                    error_message='Before submitting a job, you need to configure SSH Host and Master Host in the Settings page.',
+                    causes=[
+                        'SSH Host is not configured',
+                        'Master Host (Agent callback address) is not configured'
+                    ],
+                    action_url='/settings',
+                    action_text='Go to Settings'
+                ), 400
+
             spec = {
-                "workspace": request.form.get("workspace") or default_workspace,
+                "workspace": workspace,
                 "branch_spec": request.form.get("branch_spec"),
                 "changelist": request.form.get("changelist"),
                 "path": request.form.get("path", ""),
                 "description": request.form.get("description", ""),
-                "trial": request.form.get("trial") == "true"  # Checkbox value
-                # Note: init_script is now hardcoded in job_state_machine.py
+                "trial": request.form.get("trial") == "true",
+                "p4": {
+                    "user": p4_user,
+                    "password": p4_password,
+                    "client": p4_client,
+                    "port": p4_port
+                }
             }
             
             job_id = str(uuid.uuid4())
             
-            # Get Config
-            app_config = current_app.config["APP_CONFIG"]
-            ssh_config = app_config.get("ssh")
-            master_host = app_config.get("agent", {}).get("master_host", "127.0.0.1")
-            
-            if not ssh_config:
-                return "SSH Config missing", 500
+            # Build SSH config from session
+            ssh_config = {
+                "host": ssh_host,
+                "port": ssh_port,
+                "user": p4_user,  # Use P4 user as SSH user
+                "password": p4_password,  # Use P4 password as SSH password
+                "python_path": python_path
+            }
                 
             from app.master.bootstrapper import Bootstrapper
             try:
@@ -55,7 +157,7 @@ def register_routes(app, state_machine):
                 bootstrapper = Bootstrapper(ssh_config)
                 pid, agent_hint = bootstrapper.deploy_agent(
                     master_host=master_host,
-                    master_port=9090,
+                    master_port=master_port,
                     workspace=spec["workspace"],
                     agent_server=state_machine.agent_server
                 )
@@ -64,38 +166,39 @@ def register_routes(app, state_machine):
                 found_agent = state_machine.agent_server.wait_for_agent(agent_hint, timeout=10.0)
                 
                 if not found_agent:
-                    # Provide detailed error information
-                    agent_config = app_config.get("agent", {})
-                    error_msg = f"""<div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-                        <h3 class="font-bold mb-2">🚫 Agent Connection Failed!</h3>
-                        <p class="mb-3">The agent on <code>{ssh_config['host']}</code> failed to connect back to Master.</p>
-                        
-                        <div class="bg-white rounded p-3 mb-3">
-                            <h4 class="font-semibold mb-2">Possible Causes:</h4>
-                            <ul class="list-disc ml-5 space-y-1 text-sm">
-                                <li>Firewall blocking port <code>{agent_config.get('master_port', 9090)}</code></li>
-                                <li>Master IP <code>{agent_config.get('master_host', '127.0.0.1')}</code> unreachable from <code>{ssh_config['host']}</code></li>
-                                <li>Python 3 not installed on remote machine</li>
-                                <li>SSH deployment failed (check Agent PID: {pid})</li>
-                            </ul>
-                        </div>
-                        
-                        <div class="bg-white rounded p-3">
-                            <h4 class="font-semibold mb-2">Debug Steps:</h4>
-                            <ol class="list-decimal ml-5 space-y-1 text-sm">
-                                <li>Verify agent is running:<br>
-                                    <code class="bg-gray-100 px-1">ssh {ssh_config['user']}@{ssh_config['host']} "ps aux | grep -E 'python.*agent_core|{pid}'"</code>
-                                </li>
-                                <li>Test connectivity from remote:<br>
-                                    <code class="bg-gray-100 px-1">ssh {ssh_config['user']}@{ssh_config['host']} "nc -zv {agent_config.get('master_host', '127.0.0.1')} {agent_config.get('master_port', 9090)}"</code>
-                                </li>
-                                <li>Check Master is listening:<br>
-                                    <code class="bg-gray-100 px-1">netstat -tlnp | grep {agent_config.get('master_port', 9090)}</code>
-                                </li>
-                            </ol>
-                        </div>
-                    </div>"""
-                    return error_msg, 500
+                    # Provide detailed error information using template
+                    return render_template('error.html',
+                        error_type='error',
+                        error_title='Agent Connection Failed',
+                        error_subtitle=f'Failed to connect to agent on {ssh_host}',
+                        error_message=f'The agent was deployed to <strong>{ssh_host}</strong> but failed to connect back to Master at <strong>{master_host}:{master_port}</strong>.',
+                        causes=[
+                            f'Firewall blocking port <code>{master_port}</code> on Master',
+                            f'Master IP <code>{master_host}</code> is not reachable from <code>{ssh_host}</code>',
+                            f'Python 3 is not installed or not found at <code>{python_path}</code>',
+                            f'SSH deployment failed (Agent PID: <code>{pid}</code>)'
+                        ],
+                        debug_steps=[
+                            {
+                                'description': 'Verify agent process is running on remote machine',
+                                'command': f'ssh {p4_user}@{ssh_host} "ps aux | grep -E \'python.*agent_core|{pid}\'"'
+                            },
+                            {
+                                'description': 'Test network connectivity from remote to Master',
+                                'command': f'ssh {p4_user}@{ssh_host} "nc -zv {master_host} {master_port}"'
+                            },
+                            {
+                                'description': 'Check if Master is listening on the port',
+                                'command': f'netstat -tlnp | grep {master_port}'
+                            },
+                            {
+                                'description': 'Check agent startup logs on remote machine',
+                                'command': f'ssh {p4_user}@{ssh_host} "cat /tmp/p4_agent_boot_*.log | tail -50"'
+                            }
+                        ],
+                        technical_details=f'SSH Host: {ssh_host}:{ssh_port}\nMaster Host: {master_host}:{master_port}\nPython Path: {python_path}\nAgent PID: {pid}\nAgent Hint: {agent_hint}',
+                        retry_url='/admin/submit'
+                    ), 500
                     
                 state_machine.create_job(job_id, found_agent, spec)
                 
@@ -108,15 +211,31 @@ def register_routes(app, state_machine):
                 return redirect(url_for('job_detail', job_id=job_id))
                 
             except Exception as e:
-                return f"Failed to start job: {e}", 500
+                current_app.logger.error(f"Failed to start job: {e}")
+                return render_template('error.html',
+                    error_type='error',
+                    error_title='Failed to Start Job',
+                    error_subtitle='An unexpected error occurred',
+                    error_message=f'The job could not be started due to an error.',
+                    technical_details=str(e),
+                    retry_url='/admin/submit'
+                ), 500
                 
         return render_template('admin_submit.html')
 
     @app.route('/jobs/<job_id>')
+    @login_required
     def job_detail(job_id):
         job = state_machine.get_job(job_id)
         if not job:
-            return "Job not found", 404
+            return render_template('error.html',
+                error_type='warning',
+                error_title='Job Not Found',
+                error_subtitle=f'Job ID: {job_id[:8]}...',
+                error_message='The requested job could not be found. It may have been deleted or the ID is incorrect.',
+                action_url='/admin',
+                action_text='Back to Dashboard'
+            ), 404
         
         # Debug: log agent info
         agent_id = job.get("agent_id")
@@ -126,6 +245,7 @@ def register_routes(app, state_machine):
         return render_template('job_detail.html', job=job)
 
     @app.route('/jobs/<job_id>/logs/download')
+    @login_required
     def download_job_logs(job_id):
         """Download job logs as txt file"""
         paths = state_machine.get_log_file_path(job_id)
@@ -136,4 +256,11 @@ def register_routes(app, state_machine):
                 as_attachment=True, 
                 download_name=f"job_{job_id[:8]}_logs.txt"
             )
-        return "Log file not found", 404
+        return render_template('error.html',
+            error_type='warning',
+            error_title='Log File Not Found',
+            error_subtitle=f'Job ID: {job_id[:8]}...',
+            error_message='The log file for this job could not be found.',
+            action_url=f'/jobs/{job_id}',
+            action_text='Back to Job Details'
+        ), 404

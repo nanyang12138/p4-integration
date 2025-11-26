@@ -165,8 +165,55 @@ class AgentServer:
         
         logger.info(f"AgentServer listening on {self.host}:{self.port}")
         
+        # Start heartbeat monitor as background task
+        asyncio.create_task(self.heartbeat_monitor())
+        
         async with self.server:
             await self.server.serve_forever()
+    
+    async def heartbeat_monitor(self):
+        """Monitor agent heartbeats and detect timeouts"""
+        heartbeat_timeout = 30  # seconds
+        check_interval = 10  # seconds
+        
+        while True:
+            await asyncio.sleep(check_interval)
+            now = datetime.now()
+            
+            # Check all connected agents
+            for agent_id in list(self.agents.keys()):
+                conn = self.agents.get(agent_id)
+                if not conn:
+                    continue
+                
+                time_since_heartbeat = (now - conn.last_heartbeat).total_seconds()
+                
+                if time_since_heartbeat > heartbeat_timeout:
+                    logger.warning(f"Agent {agent_id} heartbeat timeout ({time_since_heartbeat:.1f}s > {heartbeat_timeout}s)")
+                    
+                    # Notify event handlers about timeout
+                    for handler in self.event_handlers:
+                        try:
+                            if asyncio.iscoroutinefunction(handler.handle_agent_event):
+                                await handler.handle_agent_event(agent_id, {
+                                    "type": "AGENT_TIMEOUT",
+                                    "last_heartbeat": conn.last_heartbeat.isoformat(),
+                                    "timeout_seconds": time_since_heartbeat
+                                })
+                            else:
+                                handler.handle_agent_event(agent_id, {
+                                    "type": "AGENT_TIMEOUT",
+                                    "last_heartbeat": conn.last_heartbeat.isoformat(),
+                                    "timeout_seconds": time_since_heartbeat
+                                })
+                        except Exception as e:
+                            logger.error(f"Error notifying handler about timeout: {e}")
+                    
+                    # Close the connection
+                    conn.close()
+                    if agent_id in self.agents:
+                        del self.agents[agent_id]
+                    logger.info(f"Agent {agent_id} removed due to timeout")
     
     def get_connected_agents(self) -> Dict[str, dict]:
         """Get info for all connected agents"""

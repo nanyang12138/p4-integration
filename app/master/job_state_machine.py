@@ -160,11 +160,9 @@ class JobStateMachine:
             logger.error("No workspace specified in job spec!")
             return None
         
-        # Get P4 configuration from config.yaml
-        # NOTE: P4CONFIG is on remote machine, cannot be read from Windows Master
-        # So we require P4PORT and P4CLIENT in config.yaml
-        p4_config = self.config.get("p4", {})
-        p4_bin = p4_config.get("bin", "p4")
+        # Get P4 configuration from job spec
+        p4_config = spec.get("p4", {})
+        p4_bin = "/tool/pandora64/bin/p4"  # Hardcoded per requirements
         p4_port = p4_config.get("port", "")
         p4_client = p4_config.get("client", "")
         p4_user = p4_config.get("user", "")
@@ -172,26 +170,24 @@ class JobStateMachine:
         
         # Validate required P4 fields
         if not p4_port:
-            logger.error("P4PORT not configured in config.yaml!")
+            logger.error("P4PORT not provided in job spec!")
             return None
         if not p4_client:
-            logger.error("P4CLIENT not configured in config.yaml!")
+            logger.error("P4CLIENT not provided in job spec!")
             return None
         if not p4_user:
-            logger.error("P4USER not configured in config.yaml!")
+            logger.error("P4USER not provided in job spec!")
             return None
         if not p4_password:
-            logger.error("P4PASSWD not configured in config.yaml!")
+            logger.error("P4PASSWD not provided in job spec!")
             return None
         
-        logger.info(f"Using P4 from P4CONFIG - binary: {p4_bin}, client: {p4_client}, port: {p4_port}, user: {p4_user}")
+        logger.info(f"Using P4 - binary: {p4_bin}, client: {p4_client}, port: {p4_port}, user: {p4_user}")
         
-        if not p4_user or not p4_password:
-            logger.error(f"P4USER or P4PASSWD not configured in config.yaml!")
-            return None
-        
-        # Safely escape password for shell using shlex.quote
-        p4_password_safe = shlex.quote(p4_password)
+        # Explicitly use single quotes to wrap password to handle special chars like !
+        # And escape any single quotes inside the password itself
+        safe_password = p4_password.replace("'", "'\"'\"'")
+        p4_password_arg = f"'{safe_password}'"
         
         # Hardcoded init script path
         init_script = "/proj/verif_release_ro/cbwa_initscript/current/cbwa_init.bash"
@@ -204,8 +200,9 @@ class JobStateMachine:
         
         # Build integrate command with explicit parameters
         integrate_cmd = ""
-        # Base P4 command with all explicit parameters (password safely quoted)
-        p4_base = f"{p4_bin} -p {p4_port} -u {p4_user} -c {p4_client} -P {p4_password_safe}"
+        # Base P4 command with all explicit parameters
+        # NOTE: We construct the command string manually with quotes to avoid shlex issues with !
+        p4_base = f"{p4_bin} -p {p4_port} -u {p4_user} -c {p4_client} -P {p4_password_arg}"
         
         if branch_spec:
             # Branch mode
@@ -310,10 +307,10 @@ echo "CHANGELIST:$cl"
         get_latest_cl_cmd = ""
         if branch_spec:
             # Get latest CL from branch spec
-            get_latest_cl_cmd = f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_safe} branch -o {branch_spec} | grep '//' | head -n 1 | awk '{{print $1}}' | xargs -I {{}} {p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_safe} changes -m 1 -s submitted {{}} | awk '{{print $2}}'"
+            get_latest_cl_cmd = f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} branch -o {branch_spec} | grep '//' | head -n 1 | awk '{{print $1}}' | xargs -I {{}} {p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} changes -m 1 -s submitted {{}} | awk '{{print $2}}'"
         elif source:
             # Get latest CL from source path
-            get_latest_cl_cmd = f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_safe} changes -m 1 -s submitted {source}... | awk '{{print $2}}'"
+            get_latest_cl_cmd = f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} changes -m 1 -s submitted {source}... | awk '{{print $2}}'"
         
         # Build P4PUSH command with trial support
         trial_flag = "-trial" if spec.get("trial") else ""
@@ -368,6 +365,38 @@ echo "CHANGELIST:$cl"
             await self._handle_cmd_started(message)
         elif msg_type == "CMD_DONE":
             await self._handle_cmd_done(message)
+        elif msg_type == "AGENT_TIMEOUT":
+            await self._handle_agent_timeout(agent_id, message)
+    
+    async def _handle_agent_timeout(self, agent_id: str, message: dict):
+        """Handle agent timeout - fail all jobs associated with this agent"""
+        logger.warning(f"Agent {agent_id} timed out: {message}")
+        
+        # Find all jobs using this agent
+        affected_jobs = [
+            job_id for job_id, job in self.jobs.items()
+            if job.get("agent_id") == agent_id and job.get("stage") not in [Stage.DONE.value, Stage.ERROR.value]
+        ]
+        
+        for job_id in affected_jobs:
+            job = self.jobs[job_id]
+            error_msg = f"Agent connection lost (no heartbeat for {message.get('timeout_seconds', 30):.0f}s)"
+            
+            # Log the error
+            self._add_log_entry(job_id, "stderr", f"ERROR: {error_msg}")
+            
+            # Transition to ERROR state
+            job["stage"] = Stage.ERROR.value
+            job["error"] = error_msg
+            job["updated_at"] = datetime.now().isoformat()
+            job["history"].append({
+                "from": job.get("stage"),
+                "to": Stage.ERROR.value,
+                "at": datetime.now().isoformat(),
+                "reason": "agent_timeout"
+            })
+            
+            logger.error(f"Job {job_id} failed due to agent timeout")
     
     async def _handle_cmd_started(self, message: dict):
         """Handle command started - store PID"""

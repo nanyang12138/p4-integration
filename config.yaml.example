@@ -1,53 +1,23 @@
-p4:
-  # P4 Server and Client Configuration
-  # NOTE: Master runs on Windows but Agent runs on Linux
-  # P4CONFIG file cannot be read across machines, so configure here
-  port: srdcp4ps1.amd.com:1677  # P4PORT - Perforce server address
-  client: your_client_name      # P4CLIENT - Your client/workspace name
-  user: your_username           # P4USER - Your username
-  password: ''                  # P4PASSWD - Password (use quotes if contains special chars like !)
-  bin: p4                       # Path to p4 binary (e.g., /tool/pandora64/bin/p4)
-
-# Agent Configuration
-agent:
-  # The IP/Hostname of THIS machine (Master) that Agents should connect to.
-  # Ensure this is reachable from the remote machine.
-  master_host: 10.0.0.1  # <--- CHANGE THIS to your Master IP
-  master_port: 9090
-
-# SSH Configuration for Bootstrap (Agent Deployment)
-ssh:
-  host: remote-host  # Use 'localhost' for local execution
-  user: username
-  port: 22
-  # Use key_path or password (key preferred)
-  key_path: ~/.ssh/id_rsa
-  password: ''  # SECURITY: Set via P4_INTEG_SSH_PASSWORD
-  # Optional: Explicit path to Python interpreter on remote machine
-  # If not set, defaults to 'python3'
-  python_path: /path/to/python3.11
-
-# Workspace Configuration
-workspace:
-  root: /path/to/workspace
-
-# Specs & Defaults (for UI convenience)
-defaults:
-  source: //depot/source/...
-  target: //depot/target/...
-
-specs:
-  example_spec:
-    source: //depot/main/...
-    target: //depot/branch/...
-    description: Example integration spec
-
-# Logging
-logging:
-  level: INFO
-  file: data/p4_integ.log
-  max_bytes: 2097152
-  backup_count: 5
-  json: false
-
-data_dir: data
+# P4 Integration Tool - Configuration Example
+# 
+# This file is optional! All settings have sensible defaults.
+# 
+# Most settings are configured via the UI:
+# - Login: P4 username and password
+# - Settings: SSH Host, Master Host, Python Path
+# - Job Submit: P4 Client, P4 Port, Workspace, Branch Spec
+#
+# Environment variables (optional):
+# - LOG_LEVEL: DEBUG, INFO, WARNING, ERROR (default: INFO)
+# - LOG_FILE: Log file path (default: data/p4_integ.log)
+# - P4_INTEG_DATA_DIR: Data directory (default: data/)
+#
+# You can override defaults here if needed:
+#
+# logging:
+#   level: DEBUG
+#   file: /var/log/p4_integ.log
+#   max_bytes: 10485760  # 10MB
+#   backup_count: 10
+#
+# data_dir: /var/lib/p4_integ/data

@@ -234,20 +234,54 @@ class P4Agent:
                 break
     
     async def run(self):
-        """Main entry point"""
-        if not await self.connect():
-            return
+        """Main entry point with auto-reconnect"""
+        max_reconnects = 5
+        reconnect_count = 0
         
-        try:
-            await asyncio.gather(
-                self.heartbeat_loop(),
-                self.message_loop()
-            )
-        finally:
-            if self.writer:
-                self.writer.close()
-                await self.writer.wait_closed()
-            logging.info("Stopped")
+        while reconnect_count < max_reconnects:
+            # Try to connect
+            if not await self.connect():
+                reconnect_count += 1
+                logging.warning(f"Connection failed, attempt {reconnect_count}/{max_reconnects}")
+                if reconnect_count < max_reconnects:
+                    await asyncio.sleep(5)
+                continue
+            
+            # Reset counter on successful connection
+            reconnect_count = 0
+            
+            try:
+                await asyncio.gather(
+                    self.heartbeat_loop(),
+                    self.message_loop()
+                )
+            except Exception as e:
+                logging.error(f"Error in main loop: {e}")
+            finally:
+                # Cleanup connection
+                if self.writer:
+                    try:
+                        self.writer.close()
+                        await self.writer.wait_closed()
+                    except Exception:
+                        pass
+                self.writer = None
+                self.reader = None
+            
+            # If we get here, connection was lost
+            if not self.is_running:
+                # Graceful shutdown requested
+                logging.info("Graceful shutdown")
+                break
+            
+            # Try to reconnect
+            reconnect_count += 1
+            if reconnect_count < max_reconnects:
+                logging.info(f"Connection lost, reconnecting... ({reconnect_count}/{max_reconnects})")
+                await asyncio.sleep(5)
+                self.is_running = True  # Reset flag for reconnect attempt
+        
+        logging.info("Agent stopped")
 
 if __name__ == "__main__":
     try:

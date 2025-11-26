@@ -20,6 +20,7 @@ def create_app() -> "Flask":
     from flask import Flask
     global agent_server, state_machine
     app = Flask(__name__)
+    app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key-change-in-prod")
     
     # Register a 'urlencode' filter for templates
     try:

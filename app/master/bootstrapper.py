@@ -112,25 +112,36 @@ class Bootstrapper:
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             
             try:
-                # Simple connection with password (most reliable)
+                # SSH connection with retry mechanism
                 logger.info(f"Connecting to {self.ssh_user}@{self.ssh_host}:{self.ssh_port}...")
                 
-                try:
-                    # Connect with password and longer timeout
-                    client.connect(
-                        hostname=self.ssh_host,
-                        username=self.ssh_user,
-                        password=self.ssh_password,
-                        port=self.ssh_port,
-                        timeout=30,  # Longer timeout
-                        banner_timeout=30,
-                        auth_timeout=30
-                    )
-                    logger.info("SSH connection successful!")
-                except Exception as e:
-                    error_msg = f"SSH connection failed for {self.ssh_user}@{self.ssh_host}\n"
-                    error_msg += f"Error: {e}\n"
-                    raise RuntimeError(error_msg) from e
+                max_retries = 3
+                last_error = None
+                
+                for attempt in range(max_retries):
+                    try:
+                        # Connect with password and longer timeout
+                        client.connect(
+                            hostname=self.ssh_host,
+                            username=self.ssh_user,
+                            password=self.ssh_password,
+                            port=self.ssh_port,
+                            timeout=30,  # Longer timeout
+                            banner_timeout=30,
+                            auth_timeout=30
+                        )
+                        logger.info("SSH connection successful!")
+                        break  # Success, exit retry loop
+                    except Exception as e:
+                        last_error = e
+                        if attempt < max_retries - 1:
+                            wait_time = 2 ** (attempt + 1)  # 2s, 4s, 8s
+                            logger.warning(f"SSH attempt {attempt + 1}/{max_retries} failed: {e}. Retrying in {wait_time}s...")
+                            time.sleep(wait_time)
+                        else:
+                            error_msg = f"SSH connection failed after {max_retries} attempts for {self.ssh_user}@{self.ssh_host}\n"
+                            error_msg += f"Last error: {last_error}\n"
+                            raise RuntimeError(error_msg) from last_error
 
                 # Use SFTP to upload the file directly (Reliable!)
                 sftp = client.open_sftp()

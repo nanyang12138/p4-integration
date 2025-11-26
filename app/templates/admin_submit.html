@@ -13,6 +13,25 @@
     <div class="p-6">
       <form method="post" action="/admin/submit" class="space-y-6">
         
+        <!-- P4 Configuration -->
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+          <div class="flex items-center justify-between">
+             <h3 class="text-sm font-semibold text-blue-900">P4 Configuration</h3>
+             <span class="text-xs text-blue-600">Logged in as: <strong>{{ session.get('p4_user', 'Unknown') }}</strong></span>
+          </div>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-blue-800 mb-1">P4 Port</label>
+              <input type="text" name="p4_port" id="p4_port" class="block w-full px-3 py-1.5 border border-blue-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="e.g. srdcp4ps1.amd.com:1677" required>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-blue-800 mb-1">P4 Client</label>
+              <input type="text" name="p4_client" id="p4_client" class="block w-full px-3 py-1.5 border border-blue-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="e.g. user_workspace_name" required>
+            </div>
+          </div>
+        </div>
+
         <!-- Branch Spec -->
         <div>
           <label class="block text-sm font-medium text-slate-700 mb-1">Branch Spec <span class="text-slate-400 font-normal">(Optional)</span></label>
@@ -71,14 +90,14 @@
 
         <!-- Workspace -->
         <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Workspace</label>
-          {% set ws = (config.get('workspace', {}) if config else {}) %}
+          <label class="block text-sm font-medium text-slate-700 mb-1">Workspace <span class="text-red-500">*</span></label>
           <div class="relative">
              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <i class="fa-solid fa-laptop-code text-slate-400 text-sm"></i>
             </div>
-            <input type="text" name="workspace" class="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-md focus:ring-primary-500 focus:border-primary-500 sm:text-sm" value="{{ ws.get('root','') }}" placeholder="/path/to/workspace" required />
+            <input type="text" name="workspace" id="workspace" class="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-md focus:ring-primary-500 focus:border-primary-500 sm:text-sm" placeholder="/path/to/workspace" required />
           </div>
+          <p class="mt-1 text-xs text-slate-500">Local path on the remote machine where P4 client is mapped.</p>
         </div>
 
         <!-- Description -->
@@ -155,6 +174,32 @@
     spec.addEventListener('input', update);
     update();
   }
+
+  // LocalStorage persistence for form fields
+  const fields = ['p4_port', 'p4_client', 'workspace'];
+  const defaults = {
+    'p4_port': 'srdcp4ps1.amd.com:1677',
+    'p4_client': '',
+    'workspace': ''
+  };
+  
+  fields.forEach(function(field) {
+    const input = document.getElementById(field);
+    if (input) {
+      // Load from localStorage
+      const stored = localStorage.getItem('p4_integ_' + field);
+      if (stored) {
+        input.value = stored;
+      } else if (defaults[field]) {
+        input.value = defaults[field];
+      }
+      
+      // Save to localStorage on change
+      input.addEventListener('change', function() {
+        localStorage.setItem('p4_integ_' + field, this.value);
+      });
+    }
+  });
 })();
 </script>
 {% endblock %}

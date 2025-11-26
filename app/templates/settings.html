@@ -1,0 +1,156 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  
+  <div class="mb-6 flex items-center justify-between">
+    <div>
+      <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Connection Settings</h2>
+      <p class="text-sm text-slate-500 mt-1">Configure SSH and Agent connection parameters.</p>
+    </div>
+  </div>
+
+  {% if message %}
+  <div class="mb-4 p-4 rounded-lg {% if message_type == 'success' %}bg-green-50 border border-green-200 text-green-800{% else %}bg-red-50 border border-red-200 text-red-800{% endif %}">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid {% if message_type == 'success' %}fa-check-circle{% else %}fa-exclamation-circle{% endif %}"></i>
+      <span>{{ message }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    <div class="p-6">
+      <form method="post" action="/settings" class="space-y-6">
+        
+        <!-- SSH Configuration -->
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-4">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-terminal text-amber-600"></i>
+            <h3 class="text-sm font-semibold text-amber-900">SSH Configuration</h3>
+          </div>
+          <p class="text-xs text-amber-700">Configure the remote machine where P4 commands will be executed.</p>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-amber-800 mb-1">SSH Host <span class="text-red-500">*</span></label>
+              <input type="text" name="ssh_host" id="ssh_host" 
+                     value="{{ session.get('ssh_host', '') }}"
+                     class="block w-full px-3 py-2 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" 
+                     placeholder="e.g. srdcws990.amd.com" required>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-amber-800 mb-1">SSH Port</label>
+              <input type="number" name="ssh_port" id="ssh_port" 
+                     value="{{ session.get('ssh_port', 22) }}"
+                     class="block w-full px-3 py-2 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" 
+                     placeholder="22">
+            </div>
+          </div>
+          
+          <div>
+            <label class="block text-xs font-medium text-amber-800 mb-1">Remote Python Path</label>
+            <input type="text" name="python_path" id="python_path" 
+                   value="{{ session.get('python_path', '/tool/pandora64/bin/python3.11') }}"
+                   class="block w-full px-3 py-2 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" 
+                   placeholder="/tool/pandora64/bin/python3.11">
+            <p class="mt-1 text-xs text-amber-600">Python interpreter path on the remote machine.</p>
+          </div>
+        </div>
+
+        <!-- Agent/Master Configuration -->
+        <div class="bg-teal-50 border border-teal-200 rounded-lg p-4 space-y-4">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-network-wired text-teal-600"></i>
+            <h3 class="text-sm font-semibold text-teal-900">Agent Connection</h3>
+          </div>
+          <p class="text-xs text-teal-700">Configure how the Agent connects back to this Master server.</p>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-teal-800 mb-1">Master Host <span class="text-red-500">*</span></label>
+              <input type="text" name="master_host" id="master_host" 
+                     value="{{ session.get('master_host', '') }}"
+                     class="block w-full px-3 py-2 border border-teal-300 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" 
+                     placeholder="e.g. 10.67.190.37" required>
+              <p class="mt-1 text-xs text-teal-600">IP/hostname reachable from the SSH host.</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-teal-800 mb-1">Master Port</label>
+              <input type="number" name="master_port" id="master_port" 
+                     value="{{ session.get('master_port', 9090) }}"
+                     class="block w-full px-3 py-2 border border-teal-300 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" 
+                     placeholder="9090">
+            </div>
+          </div>
+        </div>
+
+        <!-- Current Session Info -->
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <div class="flex items-center gap-2 mb-3">
+            <i class="fa-solid fa-user-circle text-slate-600"></i>
+            <h3 class="text-sm font-semibold text-slate-700">Current Session</h3>
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="text-slate-500">P4 User:</div>
+            <div class="font-medium text-slate-800">{{ session.get('p4_user', 'Not logged in') }}</div>
+            <div class="text-slate-500">SSH Password:</div>
+            <div class="font-medium text-slate-800">{{ '••••••••' if session.get('p4_password') else 'Not set' }} <span class="text-slate-400">(uses P4 password)</span></div>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="pt-4 border-t border-slate-100 flex justify-end gap-3">
+          <a href="/admin" class="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">Cancel</a>
+          <button type="submit" class="inline-flex justify-center py-2.5 px-6 border border-transparent shadow-sm text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-all transform active:scale-[0.98]">
+            <i class="fa-solid fa-save mr-2"></i> Save Settings
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Help Section -->
+  <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+    <div class="flex items-start gap-3">
+      <i class="fa-solid fa-lightbulb text-blue-500 mt-0.5"></i>
+      <div class="text-xs text-blue-800 space-y-2">
+        <p><strong>How it works:</strong></p>
+        <ol class="list-decimal ml-4 space-y-1">
+          <li>Master connects to <strong>SSH Host</strong> via SSH using your P4 credentials.</li>
+          <li>Master deploys an Agent script on the remote machine.</li>
+          <li>Agent connects back to <strong>Master Host:Port</strong> to receive commands.</li>
+          <li>P4 commands execute in the remote workspace.</li>
+        </ol>
+        <p class="mt-2"><strong>Tip:</strong> Make sure the Master Host IP is reachable from the SSH Host machine.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // LocalStorage persistence for settings
+  const fields = ['ssh_host', 'ssh_port', 'master_host', 'master_port', 'python_path'];
+  
+  fields.forEach(function(field) {
+    const input = document.getElementById(field);
+    if (input) {
+      // Load from localStorage if session doesn't have value
+      const sessionValue = input.value;
+      if (!sessionValue || sessionValue === '' || sessionValue === 'None') {
+        const stored = localStorage.getItem('p4_integ_' + field);
+        if (stored) {
+          input.value = stored;
+        }
+      }
+      
+      // Save to localStorage on change
+      input.addEventListener('change', function() {
+        localStorage.setItem('p4_integ_' + field, this.value);
+      });
+    }
+  });
+})();
+</script>
+{% endblock %}
+
