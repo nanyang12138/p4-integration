@@ -7,6 +7,8 @@ import threading
 
 from app.master.agent_server import AgentServer
 from app.master.job_state_machine import JobStateMachine
+from app.master.workspace_queue import workspace_queue
+from app.scheduler.scheduler import scheduler_manager
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -67,6 +69,9 @@ def create_app() -> "Flask":
         agent_server = AgentServer(host="0.0.0.0", port=9090)
         state_machine = JobStateMachine(agent_server, cfg)  # Pass config here
         
+        # Connect workspace queue to state machine
+        state_machine.set_workspace_queue(workspace_queue)
+        
         # Start AgentServer in a background thread
         def run_agent_server():
             loop = asyncio.new_event_loop()
@@ -75,6 +80,9 @@ def create_app() -> "Flask":
         
         server_thread = threading.Thread(target=run_agent_server, daemon=True)
         server_thread.start()
+        
+        # Start the scheduler
+        scheduler_manager.start()
 
     # Register Blueprints
     from .api import bp as api_bp

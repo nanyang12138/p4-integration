@@ -10,7 +10,7 @@ import queue
 import os
 import shlex
 import json
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, List, Any, Callable
 from datetime import datetime
 from enum import Enum
 
@@ -49,18 +49,37 @@ class JobStateMachine:
         
         # Background task for conflict monitoring
         self.monitor_tasks: Dict[str, asyncio.Task] = {}
+        
+        # Workspace queue manager reference (set externally)
+        self._workspace_queue = None
     
-    def create_job(self, job_id: str, agent_id: str, spec: dict) -> dict:
-        """Initialize a new job"""
+    def set_workspace_queue(self, queue_manager):
+        """Set the workspace queue manager for job coordination"""
+        self._workspace_queue = queue_manager
+    
+    def create_job(self, job_id: str, agent_id: str, spec: dict, owner: str = None) -> dict:
+        """Initialize a new job
+        
+        Args:
+            job_id: Unique job identifier
+            agent_id: Connected agent identifier
+            spec: Job specification
+            owner: Owner username (p4_user). If None, extracted from spec.p4.user
+        """
         # If changelist not specified, mark as latest
         if not spec.get('changelist'):
             spec['changelist_source'] = 'latest'
         else:
             spec['changelist_source'] = 'user_specified'
         
+        # Determine owner - use provided value, or extract from p4 config
+        if owner is None:
+            owner = spec.get('p4', {}).get('user', 'unknown')
+        
         job = {
             "job_id": job_id,
             "agent_id": agent_id,
+            "owner": owner,  # Job owner for filtering
             "spec": spec,
             "stage": Stage.INIT.value,
             "created_at": datetime.now().isoformat(),
@@ -73,7 +92,7 @@ class JobStateMachine:
         }
         self.jobs[job_id] = job
         self.logs[job_id] = []
-        logger.info(f"Created job {job_id} for agent {agent_id}, source CL: {spec.get('changelist', 'latest')}")
+        logger.info(f"Created job {job_id} for agent {agent_id}, owner: {owner}, source CL: {spec.get('changelist', 'latest')}")
         return job
     
     async def start_job(self, job_id: str):
@@ -118,11 +137,13 @@ class JobStateMachine:
         if next_stage == Stage.DONE:
             logger.info(f"Job {job_id} completed successfully")
             await self._shutdown_agent(job_id, "Job completed successfully")
+            self._release_workspace(job_id)
             return
             
         if next_stage == Stage.ERROR:
             logger.error(f"Job {job_id} failed")
             await self._shutdown_agent(job_id, "Job failed")
+            self._release_workspace(job_id)
             return
 
         # Execute command for the new stage
@@ -734,6 +755,27 @@ echo "CHANGELIST:$cl"
         if job_id in self.monitor_tasks:
             self.monitor_tasks[job_id].cancel()
             del self.monitor_tasks[job_id]
+    
+    def _release_workspace(self, job_id: str):
+        """Release the workspace when a job completes or fails."""
+        if not self._workspace_queue:
+            return
+        
+        job = self.jobs.get(job_id)
+        if not job:
+            return
+        
+        workspace = job.get("spec", {}).get("workspace")
+        if not workspace:
+            return
+        
+        # Release the workspace and get next queued job if any
+        next_job = self._workspace_queue.release(workspace, job_id)
+        
+        if next_job:
+            # Start the next queued job
+            logger.info(f"Starting next queued job {next_job.job_id} for workspace {workspace}")
+            # The callback will handle starting the job
 
     def _add_log_entry(self, job_id: str, stream: str, data: str):
         """Add a log entry to a job's log (both in-memory and persisted to file).
@@ -769,8 +811,26 @@ echo "CHANGELIST:$cl"
         logger.info(f"[Job {job_id}] {stream.upper()}: {data}")
 
     def _get_log_dir(self, job_id: str) -> str:
-        """Get log directory for a job"""
-        # Get absolute path: if data_dir is relative, make it relative to project root
+        """Get log directory for a job.
+        
+        Logs are stored in {workspace}/.p4_integ/logs/{job_id}/ if workspace is available,
+        otherwise falls back to the global data directory.
+        """
+        job = self.jobs.get(job_id)
+        workspace = job.get("spec", {}).get("workspace") if job else None
+        
+        if workspace:
+            # Use workspace-based storage
+            from app.config import get_workspace_data_dir
+            try:
+                ws_data_dir = get_workspace_data_dir(workspace)
+                log_dir = os.path.join(ws_data_dir, "logs", job_id)
+                os.makedirs(log_dir, exist_ok=True)
+                return log_dir
+            except Exception:
+                pass  # Fall back to global data dir
+        
+        # Fallback: use global data directory
         data_dir = self.config.get("data_dir", "data")
         
         # If data_dir is not absolute, make it relative to the project root (parent of app/)
@@ -862,6 +922,14 @@ echo "CHANGELIST:$cl"
     def get_job_logs(self, job_id: str) -> List[dict]:
         return self.logs.get(job_id, [])
     
+    def get_jobs_by_owner(self, owner: str) -> List[dict]:
+        """Get all jobs belonging to a specific owner"""
+        return [job for job in self.jobs.values() if job.get('owner') == owner]
+    
+    def get_all_jobs(self) -> List[dict]:
+        """Get all jobs (for admin view)"""
+        return list(self.jobs.values())
+    
     def get_job_info(self, job_id: str) -> dict:
         """Get job information for API"""
         job = self.jobs.get(job_id)
@@ -881,6 +949,7 @@ echo "CHANGELIST:$cl"
             'id': job_id,
             'status': status,
             'stage': stage,
+            'owner': job.get('owner', 'unknown'),  # Job owner for filtering
             'spec': job.get('spec'),
             'created_at': job.get('created_at'),
             'updated_at': job.get('updated_at'),

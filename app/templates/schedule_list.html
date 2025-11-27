@@ -1,0 +1,170 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  
+  <div class="mb-6 flex items-center justify-between">
+    <div>
+      <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Scheduled Jobs</h2>
+      <p class="text-sm text-slate-500 mt-1">Automate job execution with cron schedules.</p>
+    </div>
+    <a href="/schedules/new" class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium shadow-sm transition-all flex items-center gap-2">
+      <i class="fa-solid fa-plus"></i> New Schedule
+    </a>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    {% if schedules %}
+    <div class="divide-y divide-slate-100">
+      {% for sch in schedules %}
+      <div class="p-4 hover:bg-slate-50 transition-colors">
+        <div class="flex items-center justify-between">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg flex items-center justify-center {{ 'bg-gradient-to-br from-green-400 to-green-600' if sch.enabled else 'bg-slate-200' }}">
+                <i class="fa-solid fa-clock text-{{ 'white' if sch.enabled else 'slate-400' }}"></i>
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <h4 class="font-semibold text-slate-800 truncate">{{ sch.name }}</h4>
+                  {% if not sch.enabled %}
+                  <span class="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs rounded-full">Disabled</span>
+                  {% endif %}
+                </div>
+                <div class="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                  <span class="font-mono bg-slate-100 px-2 py-0.5 rounded">{{ sch.cron }}</span>
+                  <span><i class="fa-solid fa-arrow-right-to-bracket mr-1"></i>Next: {{ sch.next_run[:16] if sch.next_run else 'N/A' }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="flex items-center gap-2 ml-4">
+            <!-- Status indicator -->
+            {% if sch.last_status == 'success' %}
+            <span class="w-2 h-2 bg-green-500 rounded-full" title="Last run: Success"></span>
+            {% elif sch.last_status == 'failed' %}
+            <span class="w-2 h-2 bg-red-500 rounded-full" title="Last run: Failed"></span>
+            {% elif sch.last_status == 'running' %}
+            <span class="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" title="Running"></span>
+            {% else %}
+            <span class="w-2 h-2 bg-slate-300 rounded-full" title="Never run"></span>
+            {% endif %}
+            
+            <button onclick="runNow('{{ sch.id }}')" class="px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-sm font-medium transition-colors flex items-center gap-1" title="Run now">
+              <i class="fa-solid fa-play text-xs"></i>
+            </button>
+            
+            {% if sch.enabled %}
+            <button onclick="toggleSchedule('{{ sch.id }}', false)" class="px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-sm font-medium transition-colors" title="Disable">
+              <i class="fa-solid fa-pause text-xs"></i>
+            </button>
+            {% else %}
+            <button onclick="toggleSchedule('{{ sch.id }}', true)" class="px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-sm font-medium transition-colors" title="Enable">
+              <i class="fa-solid fa-play text-xs"></i>
+            </button>
+            {% endif %}
+            
+            <a href="/schedules/{{ sch.id }}/edit" class="px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg text-sm font-medium transition-colors">
+              <i class="fa-solid fa-pen text-xs"></i>
+            </a>
+            
+            <button onclick="deleteSchedule('{{ sch.id }}')" class="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors">
+              <i class="fa-solid fa-trash text-xs"></i>
+            </button>
+          </div>
+        </div>
+        
+        {% if sch.last_run %}
+        <div class="mt-2 ml-13 text-xs text-slate-400">
+          Last run: {{ sch.last_run[:19] }}
+          {% if sch.last_error %}
+          <span class="text-red-500 ml-2">Error: {{ sch.last_error[:50] }}...</span>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="p-8 text-center">
+      <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <i class="fa-solid fa-calendar-xmark text-slate-400 text-2xl"></i>
+      </div>
+      <p class="text-slate-500">No scheduled jobs yet</p>
+      <a href="/schedules/new" class="text-primary-600 hover:text-primary-700 text-sm mt-2 inline-block">
+        Create your first schedule <i class="fa-solid fa-arrow-right ml-1"></i>
+      </a>
+    </div>
+    {% endif %}
+  </div>
+  
+  <!-- Cron Expression Help -->
+  <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+    <h3 class="text-sm font-semibold text-blue-900 mb-2 flex items-center gap-2">
+      <i class="fa-solid fa-circle-info"></i> Cron Expression Format
+    </h3>
+    <div class="text-sm text-blue-800 font-mono">
+      <code>minute hour day-of-month month day-of-week</code>
+    </div>
+    <div class="mt-2 text-xs text-blue-700 space-y-1">
+      <p><code>0 2 * * *</code> - Every day at 2:00 AM</p>
+      <p><code>0 */6 * * *</code> - Every 6 hours</p>
+      <p><code>0 9 * * 1-5</code> - Weekdays at 9:00 AM</p>
+      <p><code>30 8 1 * *</code> - First day of month at 8:30 AM</p>
+    </div>
+  </div>
+</div>
+
+<script>
+async function runNow(scheduleId) {
+  if (!confirm('Run this schedule now?')) return;
+  
+  try {
+    const response = await fetch(`/api/schedules/${scheduleId}/run`, {method: 'POST'});
+    const data = await response.json();
+    
+    if (response.ok) {
+      showToast('Schedule triggered successfully');
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      alert('Failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function toggleSchedule(scheduleId, enable) {
+  const action = enable ? 'enable' : 'disable';
+  
+  try {
+    const response = await fetch(`/api/schedules/${scheduleId}/${action}`, {method: 'POST'});
+    if (response.ok) {
+      location.reload();
+    } else {
+      const data = await response.json();
+      alert('Failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function deleteSchedule(scheduleId) {
+  if (!confirm('Are you sure you want to delete this schedule?')) return;
+  
+  try {
+    const response = await fetch(`/api/schedules/${scheduleId}`, {method: 'DELETE'});
+    if (response.ok) {
+      location.reload();
+    } else {
+      const data = await response.json();
+      alert('Failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+</script>
+{% endblock %}
+

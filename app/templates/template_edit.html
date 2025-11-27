@@ -1,0 +1,300 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  
+  <div class="mb-6">
+    <a href="/templates" class="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1 mb-2">
+      <i class="fa-solid fa-arrow-left"></i> Back to Templates
+    </a>
+    <h2 class="text-2xl font-bold text-slate-800 tracking-tight">
+      {{ 'Edit Template' if template else 'New Template' }}
+    </h2>
+    <p class="text-sm text-slate-500 mt-1">Configure a reusable job template.</p>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    <form id="templateForm" class="p-6 space-y-6">
+      
+      <!-- Basic Info -->
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Template Name <span class="text-red-500">*</span></label>
+        <input type="text" name="name" id="name" value="{{ template.name if template else '' }}" 
+               class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+               placeholder="e.g. Daily Main to Orion Integration" required>
+      </div>
+
+      <!-- Template Type -->
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-2">Template Type</label>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="type" value="private" {{ 'checked' if not template or template.type == 'private' else '' }}
+                   class="text-primary-600 focus:ring-primary-500">
+            <span class="text-sm text-slate-700"><i class="fa-solid fa-lock text-purple-500 mr-1"></i> Private</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="type" value="global" {{ 'checked' if template and template.type == 'global' else '' }}
+                   class="text-primary-600 focus:ring-primary-500">
+            <span class="text-sm text-slate-700"><i class="fa-solid fa-globe text-blue-500 mr-1"></i> Global (shared)</span>
+          </label>
+        </div>
+      </div>
+
+      <hr class="border-slate-200">
+
+      <!-- P4 Configuration -->
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-4">
+        <h3 class="text-sm font-semibold text-blue-900 flex items-center gap-2">
+          <i class="fa-solid fa-database"></i> P4 Configuration
+        </h3>
+        
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-blue-800 mb-1">P4 Port</label>
+            <input type="text" name="p4_port" id="p4_port" 
+                   value="{{ template.config.p4.port if template and template.config.p4 else '' }}"
+                   class="w-full px-3 py-1.5 border border-blue-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                   placeholder="e.g. srdcp4ps1.amd.com:1677">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-blue-800 mb-1">P4 Client</label>
+            <input type="text" name="p4_client" id="p4_client"
+                   value="{{ template.config.p4.client if template and template.config.p4 else '' }}"
+                   class="w-full px-3 py-1.5 border border-blue-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                   placeholder="e.g. user_workspace_name">
+          </div>
+        </div>
+      </div>
+
+      <!-- Integration Settings -->
+      <div class="space-y-4">
+        <h3 class="text-sm font-semibold text-slate-700 flex items-center gap-2">
+          <i class="fa-solid fa-code-branch text-slate-400"></i> Integration Settings
+        </h3>
+        
+        <!-- Mode Selection -->
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">Integration Mode</label>
+          <div class="flex gap-4 mb-4">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="integ_mode" value="branch" class="text-primary-600 focus:ring-primary-500" 
+                     onchange="toggleIntegMode()" checked>
+              <span class="text-sm text-slate-700">Branch Spec</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="integ_mode" value="files" class="text-primary-600 focus:ring-primary-500"
+                     onchange="toggleIntegMode()">
+              <span class="text-sm text-slate-700">Source/Target Files</span>
+            </label>
+          </div>
+        </div>
+        
+        <!-- Branch Spec Input -->
+        <div id="mode_branch">
+          <label class="block text-sm font-medium text-slate-700 mb-1">Branch Spec</label>
+          <input type="text" name="branch_spec" id="branch_spec"
+                 value="{{ template.config.branch_spec if template else '' }}"
+                 class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                 placeholder="e.g. gfxip_unified_main_to_orion">
+        </div>
+        
+        <!-- Source/Target Inputs -->
+        <div id="mode_files" class="space-y-4 hidden">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Source Path</label>
+            <input type="text" name="source" id="source"
+                   value="{{ template.config.source if template else '' }}"
+                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                   placeholder="//depot/path/to/source/...">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Target Path</label>
+            <input type="text" name="target" id="target"
+                   value="{{ template.config.target if template else '' }}"
+                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                   placeholder="//depot/path/to/target/...">
+          </div>
+        </div>
+        
+        <!-- Common Settings -->
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Changelist (Optional)</label>
+          <input type="text" name="changelist" id="changelist"
+                 value="{{ template.config.changelist if template else '' }}"
+                 class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                 placeholder="Specific changelist to integrate (leave empty for latest)">
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Workspace Path</label>
+          <input type="text" name="workspace" id="workspace"
+                 value="{{ template.config.workspace if template else '' }}"
+                 class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                 placeholder="/path/to/workspace">
+          <p class="text-xs text-slate-500 mt-1">Can be overridden when running the template</p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <input type="text" name="description" id="description"
+                 value="{{ template.config.description if template else '' }}"
+                 class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"
+                 placeholder="Brief description for the changelist">
+        </div>
+      </div>
+
+      <hr class="border-slate-200">
+
+      <!-- SSH Configuration -->
+      <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 space-y-4">
+        <h3 class="text-sm font-semibold text-purple-900 flex items-center gap-2">
+          <i class="fa-solid fa-terminal"></i> SSH Configuration
+        </h3>
+        
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-purple-800 mb-1">SSH Host</label>
+            <input type="text" name="ssh_host" id="ssh_host"
+                   value="{{ template.config.ssh.host if template and template.config.ssh else '' }}"
+                   class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
+                   placeholder="e.g. atletx8-neu22">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-purple-800 mb-1">SSH Port</label>
+            <input type="number" name="ssh_port" id="ssh_port"
+                   value="{{ template.config.ssh.port if template and template.config.ssh else 22 }}"
+                   class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm">
+          </div>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-purple-800 mb-1">Master Host (callback)</label>
+            <input type="text" name="master_host" id="master_host"
+                   value="{{ template.config.ssh.master_host if template and template.config.ssh else '' }}"
+                   class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
+                   placeholder="IP or hostname of this server">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-purple-800 mb-1">Master Port</label>
+            <input type="number" name="master_port" id="master_port"
+                   value="{{ template.config.ssh.master_port if template and template.config.ssh else 9090 }}"
+                   class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm">
+          </div>
+        </div>
+        
+        <div>
+          <label class="block text-xs font-medium text-purple-800 mb-1">Python Path</label>
+          <input type="text" name="python_path" id="python_path"
+                 value="{{ template.config.ssh.python_path if template and template.config.ssh else 'python3' }}"
+                 class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
+                 placeholder="python3">
+        </div>
+      </div>
+
+      <!-- Options -->
+      <div>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="trial" id="trial" {{ 'checked' if template and template.config.trial else '' }}
+                 class="rounded border-slate-300 text-primary-600 focus:ring-primary-500">
+          <span class="text-sm text-slate-700">Default to trial mode</span>
+        </label>
+      </div>
+
+      <!-- Submit -->
+      <div class="pt-4 border-t border-slate-100 flex justify-end gap-3">
+        <a href="/templates" class="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">
+          Cancel
+        </a>
+        <button type="submit" class="px-6 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors">
+          <i class="fa-solid fa-save mr-2"></i>{{ 'Update' if template else 'Create' }} Template
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function toggleIntegMode() {
+  const mode = document.querySelector('input[name="integ_mode"]:checked').value;
+  const modeBranch = document.getElementById('mode_branch');
+  const modeFiles = document.getElementById('mode_files');
+  
+  if (mode === 'branch') {
+    modeBranch.classList.remove('hidden');
+    modeFiles.classList.add('hidden');
+  } else {
+    modeBranch.classList.add('hidden');
+    modeFiles.classList.remove('hidden');
+  }
+}
+
+// Initial state
+(function() {
+  const hasSource = '{{ template.config.source if template else "" }}';
+  if (hasSource) {
+    document.querySelector('input[name="integ_mode"][value="files"]').checked = true;
+  }
+  toggleIntegMode();
+})();
+
+document.getElementById('templateForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  
+  const formData = new FormData(this);
+  const templateId = '{{ template.id if template else "" }}';
+  const isEdit = !!templateId;
+  const integMode = formData.get('integ_mode');
+  
+  const config = {
+    p4: {
+      port: formData.get('p4_port'),
+      client: formData.get('p4_client')
+    },
+    branch_spec: integMode === 'branch' ? formData.get('branch_spec') : '',
+    source: integMode === 'files' ? formData.get('source') : '',
+    target: integMode === 'files' ? formData.get('target') : '',
+    changelist: formData.get('changelist'),
+    workspace: formData.get('workspace'),
+    description: formData.get('description'),
+    trial: formData.get('trial') === 'on',
+    ssh: {
+      host: formData.get('ssh_host'),
+      port: parseInt(formData.get('ssh_port')) || 22,
+      master_host: formData.get('master_host'),
+      master_port: parseInt(formData.get('master_port')) || 9090,
+      python_path: formData.get('python_path') || 'python3'
+    }
+  };
+  
+  const payload = {
+    name: formData.get('name'),
+    type: formData.get('type'),
+    config: config,
+    workspace: formData.get('workspace')  // For private template storage location
+  };
+  
+  try {
+    const url = isEdit ? `/api/templates/${templateId}` : '/api/templates';
+    const method = isEdit ? 'PUT' : 'POST';
+    
+    const response = await fetch(url, {
+      method: method,
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      window.location.href = '/templates';
+    } else {
+      alert('Failed to save template: ' + (data.error || 'Unknown error'));
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+});
+</script>
+{% endblock %}
+

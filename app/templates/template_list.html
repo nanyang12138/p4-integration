@@ -1,0 +1,228 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="max-w-5xl mx-auto">
+  
+  <div class="mb-8 flex items-center justify-between">
+    <div>
+      <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Job Templates</h2>
+      <p class="text-sm text-slate-500 mt-1">Save and reuse job configurations.</p>
+    </div>
+    <a href="/templates/new" class="px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium shadow-sm shadow-primary-500/30 transition-all flex items-center gap-2 transform active:scale-95">
+      <i class="fa-solid fa-plus"></i>
+      <span>New Template</span>
+    </a>
+  </div>
+
+  <!-- Global Templates -->
+  <div class="mb-10">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+        <i class="fa-solid fa-globe"></i>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold text-slate-800">Global Templates</h3>
+        <p class="text-xs text-slate-500">Shared configurations available to everyone</p>
+      </div>
+    </div>
+    
+    {% if global_templates %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% for tpl in global_templates %}
+      <div class="bg-white rounded-xl p-5 border border-slate-200 hover-card group relative overflow-hidden">
+        <!-- Decorative accent -->
+        <div class="absolute top-0 left-0 w-1 h-full bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+        
+        <div class="flex justify-between items-start mb-3">
+          <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-lg">
+            <i class="fa-solid fa-cube"></i>
+          </div>
+          <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <button onclick="runTemplate('{{ tpl.id }}', '{{ tpl.config.workspace or '' }}')" class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center transition-colors" title="Run Job">
+              <i class="fa-solid fa-play text-xs"></i>
+            </button>
+            {% if tpl.owner == session.get('p4_user') %}
+            <a href="/templates/{{ tpl.id }}/edit" class="w-8 h-8 rounded-full bg-slate-50 text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors" title="Edit">
+              <i class="fa-solid fa-pen text-xs"></i>
+            </a>
+            <button onclick="deleteTemplate('{{ tpl.id }}', '')" class="w-8 h-8 rounded-full bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors" title="Delete">
+              <i class="fa-solid fa-trash text-xs"></i>
+            </button>
+            {% endif %}
+          </div>
+        </div>
+        
+        <h4 class="font-semibold text-slate-800 mb-1 truncate pr-8">{{ tpl.name }}</h4>
+        
+        <div class="space-y-2">
+          <div class="flex items-center gap-2 text-xs text-slate-500">
+            <i class="fa-solid fa-code-branch w-4 text-center"></i>
+            <span class="truncate font-mono bg-slate-50 px-1.5 py-0.5 rounded">{{ tpl.config.branch_spec or 'No branch spec' }}</span>
+          </div>
+          <div class="flex items-center gap-2 text-xs text-slate-500">
+            <i class="fa-solid fa-user w-4 text-center"></i>
+            <span class="truncate">Created by {{ tpl.owner }}</span>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="bg-white/50 border border-dashed border-slate-300 rounded-xl p-8 text-center">
+      <p class="text-slate-500 text-sm">No global templates available.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Private Templates -->
+  <div>
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
+        <i class="fa-solid fa-lock"></i>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold text-slate-800">My Templates</h3>
+        <p class="text-xs text-slate-500">Your private configurations</p>
+      </div>
+    </div>
+    
+    {% if private_templates %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% for tpl in private_templates %}
+      <div class="bg-white rounded-xl p-5 border border-slate-200 hover-card group relative overflow-hidden">
+        <!-- Decorative accent -->
+        <div class="absolute top-0 left-0 w-1 h-full bg-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+        
+        <div class="flex justify-between items-start mb-3">
+          <div class="w-10 h-10 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center text-lg">
+            <i class="fa-solid fa-file-code"></i>
+          </div>
+          <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <button onclick="runTemplate('{{ tpl.id }}', '{{ tpl.config.workspace or '' }}')" class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center transition-colors" title="Run Job">
+              <i class="fa-solid fa-play text-xs"></i>
+            </button>
+            <a href="/templates/{{ tpl.id }}/edit" class="w-8 h-8 rounded-full bg-slate-50 text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors" title="Edit">
+              <i class="fa-solid fa-pen text-xs"></i>
+            </a>
+            <button onclick="deleteTemplate('{{ tpl.id }}', '{{ tpl.config.workspace or '' }}')" class="w-8 h-8 rounded-full bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors" title="Delete">
+              <i class="fa-solid fa-trash text-xs"></i>
+            </button>
+          </div>
+        </div>
+        
+        <h4 class="font-semibold text-slate-800 mb-1 truncate pr-8">{{ tpl.name }}</h4>
+        
+        <div class="space-y-2">
+          <div class="flex items-center gap-2 text-xs text-slate-500">
+            <i class="fa-solid fa-folder-open w-4 text-center"></i>
+            <span class="truncate" title="{{ tpl.config.workspace }}">{{ tpl.config.workspace or 'No workspace' }}</span>
+          </div>
+          <div class="flex items-center gap-2 text-xs text-slate-500">
+            <i class="fa-solid fa-clock w-4 text-center"></i>
+            <span class="truncate">Updated {{ tpl.updated_at[:10] }}</span>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="bg-white/50 border border-dashed border-slate-300 rounded-xl p-8 text-center">
+      <p class="text-slate-500 text-sm">No private templates yet.</p>
+      <p class="text-xs text-slate-400 mt-1">Create one to save your frequently used configurations.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Run Template Modal -->
+<div id="runModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+  <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+    <h3 class="text-lg font-semibold text-slate-800 mb-4">Run Template</h3>
+    <form id="runForm">
+      <input type="hidden" id="runTemplateId" name="template_id">
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-slate-700 mb-1">Workspace Path</label>
+        <input type="text" id="runWorkspace" name="workspace" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-primary-500 focus:border-primary-500" placeholder="/path/to/workspace" required>
+      </div>
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-slate-700 mb-1">Changelist (optional)</label>
+        <input type="text" id="runChangelist" name="changelist" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-primary-500 focus:border-primary-500" placeholder="Leave empty for latest">
+      </div>
+      <div class="mb-6">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="runTrial" name="trial" class="rounded border-slate-300 text-primary-600 focus:ring-primary-500">
+          <span class="text-sm text-slate-700">Trial mode (dry run)</span>
+        </label>
+      </div>
+      <div class="flex justify-end gap-3">
+        <button type="button" onclick="closeRunModal()" class="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50">Cancel</button>
+        <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+          <i class="fa-solid fa-play mr-2"></i>Start Job
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function runTemplate(templateId, workspace) {
+  document.getElementById('runTemplateId').value = templateId;
+  if (workspace) {
+    document.getElementById('runWorkspace').value = workspace;
+  }
+  document.getElementById('runModal').classList.remove('hidden');
+  document.getElementById('runModal').classList.add('flex');
+}
+
+function closeRunModal() {
+  document.getElementById('runModal').classList.add('hidden');
+  document.getElementById('runModal').classList.remove('flex');
+}
+
+document.getElementById('runForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const templateId = document.getElementById('runTemplateId').value;
+  const workspace = document.getElementById('runWorkspace').value;
+  const changelist = document.getElementById('runChangelist').value;
+  const trial = document.getElementById('runTrial').checked;
+  
+  try {
+    const response = await fetch(`/api/templates/${templateId}/run`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({workspace, changelist, trial})
+    });
+    const data = await response.json();
+    
+    if (response.ok) {
+      window.location.href = `/jobs/${data.job_id}`;
+    } else {
+      alert('Failed to start job: ' + (data.error || 'Unknown error'));
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+});
+
+async function deleteTemplate(templateId, workspace) {
+  if (!confirm('Are you sure you want to delete this template?')) return;
+  
+  try {
+    let url = `/api/templates/${templateId}`;
+    if (workspace) {
+      url += `?workspace=${encodeURIComponent(workspace)}`;
+    }
+    
+    const response = await fetch(url, {method: 'DELETE'});
+    if (response.ok) {
+      location.reload();
+    } else {
+      const data = await response.json();
+      alert('Failed to delete: ' + (data.error || 'Unknown error'));
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+</script>
+{% endblock %}
+

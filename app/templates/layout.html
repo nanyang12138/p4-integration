@@ -32,10 +32,26 @@
       ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
       .glass {
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+      }
+      
+      /* Card hover effect */
+      .hover-card {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .hover-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      }
+
+      /* Subtle pattern background */
+      body {
+        background-color: #f8fafc;
+        background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+        background-size: 24px 24px;
       }
       
       /* Animations */
@@ -63,29 +79,36 @@
     <!-- Navbar -->
     <nav class="fixed top-0 w-full z-40 glass transition-all duration-300" id="navbar">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between h-16">
-          <div class="flex items-center gap-4">
-            <a href="/admin" class="flex items-center gap-2 group">
+        <div class="flex justify-between items-center h-16">
+          <div class="flex items-center gap-8 flex-shrink-0">
+            <a href="/admin" class="flex items-center gap-2 group flex-shrink-0">
               <div class="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-lg flex items-center justify-center shadow-lg shadow-primary-500/30 group-hover:scale-105 transition-transform duration-200">
                 <i class="fa-solid fa-code-branch text-white text-sm"></i>
               </div>
-              <span class="font-bold text-xl tracking-tight text-slate-900 group-hover:text-primary-600 transition-colors">P4 Integration</span>
+              <span class="font-bold text-xl tracking-tight text-slate-900 group-hover:text-primary-600 transition-colors hidden sm:inline-block">P4 Integration</span>
             </a>
+            
+            <!-- Desktop Navigation -->
+            <div class="hidden md:flex items-center gap-1">
+              <a href="/admin" class="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 flex items-center gap-2">
+                <i class="fa-solid fa-table-columns text-slate-400"></i> Dashboard
+              </a>
+              <a href="/templates" class="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 flex items-center gap-2">
+                <i class="fa-solid fa-file-code text-slate-400"></i> Templates
+              </a>
+              <a href="/schedules" class="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 flex items-center gap-2">
+                <i class="fa-solid fa-clock text-slate-400"></i> Schedules
+              </a>
+              <a href="/settings" class="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 flex items-center gap-2">
+                <i class="fa-solid fa-cog text-slate-400"></i> Settings
+              </a>
+            </div>
           </div>
 
-          <div class="flex items-center gap-4">
-            <a href="/admin" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 flex items-center gap-2">
-              <i class="fa-solid fa-table-columns text-slate-400"></i> Dashboard
-            </a>
-            <a href="/settings" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 flex items-center gap-2">
-              <i class="fa-solid fa-cog text-slate-400"></i> Settings
-            </a>
-
-            <div class="h-6 w-px bg-slate-200"></div>
-
+          <div class="flex items-center gap-4 flex-shrink-0">
             <!-- User Profile & Logout -->
             {% if session.get('p4_user') %}
-            <div class="flex items-center gap-3 px-2">
+            <div class="hidden sm:flex items-center gap-3 px-2 border-r border-slate-200 mr-2">
               <div class="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200">
                 <i class="fa-solid fa-user-circle text-slate-400"></i>
                 <span class="font-medium text-slate-800">{{ session.get('p4_user') }}</span>
@@ -95,20 +118,19 @@
                 <span>Exit</span>
               </a>
             </div>
-            <div class="h-6 w-px bg-slate-200"></div>
             {% endif %}
 
             {% set cfg = (config or {}) %}
             {% set ssh_cfg = (cfg.get('ssh', {}) if cfg else {}) %}
             {% set agent_cfg = (cfg.get('agent', {}) if cfg else {}) %}
             
-                <div id="agent-status" class="flex items-center px-3 py-1.5 bg-slate-100 rounded-full border border-slate-200 text-xs font-medium text-slate-600 cursor-pointer" title="Click to see Agent status">
-                  <div id="agent-status-dot" class="w-2 h-2 rounded-full bg-gray-400 mr-2"></div>
-                  <span id="agent-status-text">Agents: Checking...</span>
-                </div>
+            <div id="agent-status" class="hidden sm:flex items-center px-3 py-1.5 bg-slate-100 rounded-full border border-slate-200 text-xs font-medium text-slate-600 cursor-pointer whitespace-nowrap" title="Click to see Agent status">
+              <div id="agent-status-dot" class="w-2 h-2 rounded-full bg-gray-400 mr-2 flex-shrink-0"></div>
+              <span id="agent-status-text">Checking...</span>
+            </div>
             
-            <a href="/admin/submit" class="ml-4 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium shadow-sm shadow-primary-500/30 transition-all transform active:scale-95 flex items-center gap-2">
-              <i class="fa-solid fa-plus"></i> New Job
+            <a href="/admin/submit" class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium shadow-sm shadow-primary-500/30 transition-all transform active:scale-95 flex items-center gap-2 whitespace-nowrap">
+              <i class="fa-solid fa-plus"></i> <span class="hidden sm:inline">New Job</span>
             </a>
           </div>
         </div>

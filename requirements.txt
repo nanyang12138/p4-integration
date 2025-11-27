@@ -3,3 +3,4 @@ PyYAML==6.0.1
 paramiko>=3.0.0
 bcrypt>=4.0.0
 PyNaCl>=1.5.0
+APScheduler>=3.10.0

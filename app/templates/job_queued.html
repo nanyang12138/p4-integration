@@ -1,0 +1,99 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  
+  <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    <div class="p-6 text-center">
+      
+      <div class="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+        <i class="fa-solid fa-clock text-amber-500 text-3xl"></i>
+      </div>
+      
+      <h2 class="text-2xl font-bold text-slate-800 mb-2">Job Queued</h2>
+      <p class="text-slate-500 mb-6">Your job has been added to the workspace queue.</p>
+      
+      <div class="bg-slate-50 rounded-lg p-4 mb-6 text-left">
+        <div class="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <span class="text-slate-500">Your Job ID:</span>
+            <p class="font-mono text-slate-800">{{ job_id[:8] }}...</p>
+          </div>
+          <div>
+            <span class="text-slate-500">Queue Position:</span>
+            <p class="font-semibold text-amber-600 text-lg">#{{ position }}</p>
+          </div>
+          <div class="col-span-2">
+            <span class="text-slate-500">Workspace:</span>
+            <p class="font-mono text-xs text-slate-700 truncate">{{ workspace }}</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div class="flex items-start gap-3">
+          <i class="fa-solid fa-info-circle text-blue-500 mt-0.5"></i>
+          <div class="text-left text-sm">
+            <p class="text-blue-800 font-medium">Workspace is currently in use</p>
+            <p class="text-blue-600 mt-1">
+              Job <code class="bg-blue-100 px-1 rounded">{{ running_job_id[:8] if running_job_id else 'N/A' }}...</code>
+              is currently running (owner: <strong>{{ running_job_owner or 'unknown' }}</strong>).
+            </p>
+            <p class="text-blue-600 mt-1">
+              Your job will start automatically when the current job completes.
+            </p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="flex justify-center gap-4">
+        <a href="/admin" class="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+          <i class="fa-solid fa-arrow-left mr-2"></i>Back to Dashboard
+        </a>
+        <a href="/jobs/{{ job_id }}" class="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors">
+          <i class="fa-solid fa-eye mr-2"></i>View Job Details
+        </a>
+      </div>
+      
+    </div>
+  </div>
+  
+  <!-- Queue Status Info -->
+  <div class="mt-6 bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+    <h3 class="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+      <i class="fa-solid fa-list-ol text-slate-400"></i> Queue for this workspace
+    </h3>
+    <div id="queueList" class="text-sm text-slate-600">
+      Loading queue status...
+    </div>
+  </div>
+  
+</div>
+
+<script>
+async function loadQueueStatus() {
+  try {
+    const response = await fetch('/api/queue/check?workspace={{ workspace | urlencode }}');
+    const data = await response.json();
+    
+    const queueList = document.getElementById('queueList');
+    
+    if (data.available) {
+      queueList.innerHTML = '<p class="text-green-600"><i class="fa-solid fa-check-circle mr-2"></i>Workspace is now available!</p>';
+      // Refresh page after a short delay
+      setTimeout(() => location.reload(), 2000);
+    } else {
+      let html = `<p class="text-slate-500 mb-2">Current job: <code>${data.running_job_id ? data.running_job_id.substring(0, 8) : 'N/A'}...</code> (${data.running_job_owner || 'unknown'})</p>`;
+      html += `<p class="text-slate-500">Jobs waiting: ${data.queue_length}</p>`;
+      queueList.innerHTML = html;
+    }
+  } catch (e) {
+    console.error('Failed to load queue status:', e);
+  }
+}
+
+// Refresh every 5 seconds
+loadQueueStatus();
+setInterval(loadQueueStatus, 5000);
+</script>
+{% endblock %}
+

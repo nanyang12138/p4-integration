@@ -166,3 +166,52 @@ def validate_config(config: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str], 
             log_cfg["backup_count"] = 5
 
     return config, warnings, errors
+
+
+def get_workspace_data_dir(workspace_path: str) -> str:
+    """Get the data directory for a specific workspace.
+    
+    Returns the path to {workspace}/.p4_integ/ directory.
+    Creates the directory if it doesn't exist.
+    
+    Args:
+        workspace_path: Path to the P4 workspace
+        
+    Returns:
+        Path to the .p4_integ directory within the workspace
+    """
+    if not workspace_path:
+        raise ValueError("workspace_path cannot be empty")
+    
+    data_dir = os.path.join(workspace_path, ".p4_integ")
+    
+    # Create directory structure
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+        os.makedirs(os.path.join(data_dir, "logs"), exist_ok=True)
+        os.makedirs(os.path.join(data_dir, "templates"), exist_ok=True)
+    except OSError:
+        # May fail on remote filesystem, that's okay - will be created when needed
+        pass
+    
+    return data_dir
+
+
+def get_global_templates_dir() -> str:
+    """Get the directory for global templates.
+    
+    Returns the path to data/templates/global/ directory.
+    """
+    # Get the project root directory
+    current_file = os.path.abspath(__file__)
+    app_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(app_dir)
+    
+    templates_dir = os.path.join(project_root, "data", "templates", "global")
+    
+    try:
+        os.makedirs(templates_dir, exist_ok=True)
+    except OSError:
+        pass
+    
+    return templates_dir

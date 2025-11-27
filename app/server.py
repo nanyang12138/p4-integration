@@ -3,6 +3,8 @@ Flask Server Routes (Refactored for Architecture v2)
 Adapts existing UI routes to use JobStateMachine.
 """
 from flask import render_template, request, redirect, url_for, jsonify, current_app, send_file, session
+from app.models.template import template_manager
+from app import workspace_queue, scheduler_manager
 import uuid
 import os
 from datetime import datetime
@@ -61,8 +63,9 @@ def register_routes(app, state_machine):
     @app.route('/admin')
     @login_required
     def admin_dashboard():
-        # Fetch all jobs from state_machine
-        jobs = list(state_machine.jobs.values())
+        # Fetch jobs belonging to current user
+        current_user = session.get('p4_user')
+        jobs = state_machine.get_jobs_by_owner(current_user)
         # Sort by updated_at desc
         jobs.sort(key=lambda x: x['updated_at'], reverse=True)
         return render_template('admin.html', jobs=jobs)
@@ -208,15 +211,46 @@ def register_routes(app, state_machine):
                         retry_url='/admin/submit'
                     ), 500
                     
-                state_machine.create_job(job_id, found_agent, spec)
+                # Check if workspace is available
+                queue_result = workspace_queue.try_acquire(workspace, job_id, p4_user)
                 
-                import asyncio
-                asyncio.run_coroutine_threadsafe(
-                    state_machine.start_job(job_id),
-                    state_machine.agent_server._loop
-                )
-                
-                return redirect(url_for('job_detail', job_id=job_id))
+                if queue_result["acquired"]:
+                    # Workspace available - start job immediately
+                    state_machine.create_job(job_id, found_agent, spec, owner=p4_user)
+                    
+                    import asyncio
+                    asyncio.run_coroutine_threadsafe(
+                        state_machine.start_job(job_id),
+                        state_machine.agent_server._loop
+                    )
+                    
+                    # Save workspace to session for template lookup
+                    session['last_workspace'] = workspace
+                    
+                    return redirect(url_for('job_detail', job_id=job_id))
+                else:
+                    # Workspace busy - add to queue
+                    position = workspace_queue.queue_job(
+                        workspace=workspace,
+                        job_id=job_id,
+                        owner=p4_user,
+                        spec=spec
+                    )
+                    
+                    # Create a placeholder job entry so user can track it
+                    state_machine.create_job(job_id, found_agent, spec, owner=p4_user)
+                    
+                    # Store queue info in session for display
+                    session['last_workspace'] = workspace
+                    
+                    # Show queue info page
+                    return render_template('job_queued.html',
+                        job_id=job_id,
+                        position=position,
+                        workspace=workspace,
+                        running_job_id=queue_result.get("running_job_id"),
+                        running_job_owner=queue_result.get("running_job_owner")
+                    )
                 
             except Exception as e:
                 current_app.logger.error(f"Failed to start job: {e}")
@@ -325,3 +359,102 @@ def register_routes(app, state_machine):
             action_url=f'/jobs/{job_id}',
             action_text='Back to Job Details'
         ), 404
+
+    # ============= Template Routes =============
+    
+    @app.route('/templates')
+    @login_required
+    def template_list():
+        """List all templates"""
+        username = session.get('p4_user')
+        # Get workspace from session or use a default
+        workspace = session.get('last_workspace', '')
+        
+        global_templates = template_manager.list_global_templates()
+        private_templates = template_manager.list_user_templates(workspace, username) if workspace else []
+        
+        return render_template('template_list.html',
+            global_templates=global_templates,
+            private_templates=private_templates
+        )
+    
+    @app.route('/templates/new')
+    @login_required
+    def template_new():
+        """Create new template form"""
+        return render_template('template_edit.html', template=None)
+    
+    @app.route('/templates/<template_id>/edit')
+    @login_required
+    def template_edit(template_id):
+        """Edit template form"""
+        username = session.get('p4_user')
+        workspace = session.get('last_workspace', '')
+        
+        template = template_manager.get_template(template_id, workspace, username)
+        if not template:
+            return render_template('error.html',
+                error_type='warning',
+                error_title='Template Not Found',
+                error_message='The requested template could not be found.',
+                action_url='/templates',
+                action_text='Back to Templates'
+            ), 404
+        
+        return render_template('template_edit.html', template=template)
+
+    # ============= Schedule Routes =============
+    
+    @app.route('/schedules')
+    @login_required
+    def schedule_list():
+        """List all schedules"""
+        username = session.get('p4_user')
+        workspace = session.get('last_workspace', '')
+        
+        schedules = scheduler_manager.list_schedules(owner=username)
+        
+        return render_template('schedule_list.html', schedules=schedules)
+    
+    @app.route('/schedules/new')
+    @login_required
+    def schedule_new():
+        """Create new schedule form"""
+        username = session.get('p4_user')
+        workspace = session.get('last_workspace', '')
+        
+        # Get templates for selection
+        templates = template_manager.list_all_templates(workspace, username)
+        
+        return render_template('schedule_edit.html', schedule=None, templates=templates)
+    
+    @app.route('/schedules/<schedule_id>/edit')
+    @login_required
+    def schedule_edit(schedule_id):
+        """Edit schedule form"""
+        username = session.get('p4_user')
+        workspace = session.get('last_workspace', '')
+        
+        schedule = scheduler_manager.get_schedule(schedule_id)
+        if not schedule:
+            return render_template('error.html',
+                error_type='warning',
+                error_title='Schedule Not Found',
+                error_message='The requested schedule could not be found.',
+                action_url='/schedules',
+                action_text='Back to Schedules'
+            ), 404
+        
+        # Check ownership
+        if schedule.get('owner') != username:
+            return render_template('error.html',
+                error_type='error',
+                error_title='Permission Denied',
+                error_message='You do not have permission to edit this schedule.',
+                action_url='/schedules',
+                action_text='Back to Schedules'
+            ), 403
+        
+        templates = template_manager.list_all_templates(workspace, username)
+        
+        return render_template('schedule_edit.html', schedule=schedule, templates=templates)
