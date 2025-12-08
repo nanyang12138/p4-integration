@@ -181,12 +181,21 @@
         {% endif %}
 
         <div class="pt-2 flex gap-3">
-           <button class="flex-1 px-4 py-2 border border-red-200 rounded-lg shadow-sm text-sm font-medium text-red-600 bg-white hover:bg-red-50 transition-all" type="button" id="btn-cancel">
+           <button class="flex-1 px-4 py-2 border border-red-200 rounded-lg shadow-sm text-sm font-medium text-red-600 bg-white hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed" type="button" id="btn-cancel">
              Cancel
            </button>
-           <button class="flex-1 px-4 py-2 border border-slate-200 rounded-lg shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-all" type="button" id="btn-retry">
+           <button class="flex-1 px-4 py-2 border border-slate-200 rounded-lg shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed" type="button" id="btn-retry">
              Retry
            </button>
+        </div>
+        
+        <!-- Retry status message -->
+        <div id="retryStatusMsg" class="hidden mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div class="flex items-center gap-2 text-blue-700 text-sm">
+            <i class="fa-solid fa-circle-notch animate-spin"></i>
+            <span id="retryStatusText">Connecting to remote machine...</span>
+          </div>
+          <p class="text-xs text-blue-600 mt-1">This may take up to 15 seconds.</p>
         </div>
       </div>
       
@@ -312,30 +321,54 @@
   }
   
   if(btnRetry){
+    var retryStatusMsg = document.getElementById('retryStatusMsg');
+    var retryStatusText = document.getElementById('retryStatusText');
+    var retryTimers = [];
+    
     btnRetry.addEventListener('click', function(){
       if(!confirm('Retry will create a new job with the same configuration. Continue?')) return;
+      
+      // Show loading state
       btnRetry.disabled = true;
-      btnRetry.textContent = 'Retrying...';
+      btnRetry.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin mr-1"></i> Retrying...';
+      btnCancel.disabled = true;
+      
+      // Show status message
+      if(retryStatusMsg) retryStatusMsg.classList.remove('hidden');
+      if(retryStatusText) retryStatusText.textContent = 'Connecting to remote machine...';
+      
+      // Update status over time
+      retryTimers = [
+        setTimeout(function(){ if(retryStatusText) retryStatusText.textContent = 'Deploying agent...'; }, 3000),
+        setTimeout(function(){ if(retryStatusText) retryStatusText.textContent = 'Waiting for agent to connect...'; }, 6000),
+        setTimeout(function(){ if(retryStatusText) retryStatusText.textContent = 'Almost there...'; }, 10000)
+      ];
+      
       fetch('/api/jobs/' + jobId + '/retry', {method:'POST'})
         .then(function(r) {
           if(!r.ok) return r.json().then(e => { throw new Error(e.error || 'HTTP ' + r.status); });
           return r.json();
         })
         .then(function(res){ 
+          retryTimers.forEach(function(t){ clearTimeout(t); });
           if(res && res.status === 'success' && res.new_job_id){ 
-            alert('Retry job created successfully!');
-            // Redirect to the new job
+            if(retryStatusText) retryStatusText.textContent = 'Success! Redirecting...';
             window.location.href = '/jobs/' + res.new_job_id;
           } else { 
             alert(res.error || 'Retry failed'); 
             btnRetry.disabled = false;
             btnRetry.textContent = 'Retry';
+            btnCancel.disabled = false;
+            if(retryStatusMsg) retryStatusMsg.classList.add('hidden');
           } 
         })
         .catch(function(err){ 
+          retryTimers.forEach(function(t){ clearTimeout(t); });
           alert('Retry failed: ' + err.message);
           btnRetry.disabled = false;
           btnRetry.textContent = 'Retry';
+          btnCancel.disabled = false;
+          if(retryStatusMsg) retryStatusMsg.classList.add('hidden');
         });
     });
   }

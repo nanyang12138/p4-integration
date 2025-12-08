@@ -122,10 +122,19 @@
           </label>
         </div>
 
+        <!-- Status message area (shown during submission) -->
+        <div id="submitStatusMsg" class="hidden p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div class="flex items-center gap-2 text-blue-700 text-sm">
+            <i class="fa-solid fa-circle-notch animate-spin"></i>
+            <span id="submitStatusText">Connecting to remote machine via SSH...</span>
+          </div>
+          <p class="text-xs text-blue-600 mt-1">This may take up to 15 seconds. Please wait...</p>
+        </div>
+
         <!-- Submit Button -->
         <div class="pt-4 border-t border-slate-100 flex justify-end gap-3">
-          <a href="/admin" class="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">Cancel</a>
-          <button id="btnCreate" type="submit" class="inline-flex justify-center py-2.5 px-6 border border-transparent shadow-sm text-sm font-medium rounded-lg text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all transform active:scale-[0.98]">
+          <a href="/admin" id="cancelLink" class="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">Cancel</a>
+          <button id="btnCreate" type="submit" class="inline-flex justify-center py-2.5 px-6 border border-transparent shadow-sm text-sm font-medium rounded-lg text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
             <i class="fa-solid fa-play mr-2"></i> Start Integration
           </button>
         </div>
@@ -200,6 +209,75 @@
       });
     }
   });
+
+  // ========== Loading State for Form Submission ==========
+  let isSubmitting = false;
+  const form = document.querySelector('form[action="/admin/submit"]');
+  const submitBtn = document.getElementById('btnCreate');
+  const cancelLink = document.getElementById('cancelLink');
+  const statusMsg = document.getElementById('submitStatusMsg');
+  const statusText = document.getElementById('submitStatusText');
+  
+  function setFormSubmitting(loading) {
+    isSubmitting = loading;
+    
+    if (loading) {
+      // Disable button and show loading
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin mr-2"></i> Starting...';
+      
+      // Disable cancel link
+      cancelLink.classList.add('opacity-50', 'pointer-events-none');
+      
+      // Show status message
+      statusMsg.classList.remove('hidden');
+      
+      // Disable all form inputs
+      form.querySelectorAll('input, select, textarea').forEach(el => el.disabled = true);
+    } else {
+      // Re-enable everything
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i class="fa-solid fa-play mr-2"></i> Start Integration';
+      cancelLink.classList.remove('opacity-50', 'pointer-events-none');
+      statusMsg.classList.add('hidden');
+      form.querySelectorAll('input, select, textarea').forEach(el => el.disabled = false);
+      
+      // Re-apply spec-based disabling
+      update();
+    }
+  }
+  
+  if (form) {
+    form.addEventListener('submit', function(e) {
+      // Prevent double submission
+      if (isSubmitting) {
+        e.preventDefault();
+        console.log('Submission already in progress, ignoring');
+        return false;
+      }
+      
+      // Show loading state immediately
+      setFormSubmitting(true);
+      
+      // Update status message over time
+      const statusUpdates = [
+        { delay: 3000, text: 'Deploying agent on remote machine...' },
+        { delay: 6000, text: 'Waiting for agent to connect back...' },
+        { delay: 10000, text: 'Almost there, establishing connection...' }
+      ];
+      
+      statusUpdates.forEach(update => {
+        setTimeout(() => {
+          if (statusText && isSubmitting) {
+            statusText.textContent = update.text;
+          }
+        }, update.delay);
+      });
+      
+      // Allow form to submit normally (POST)
+      return true;
+    });
+  }
 })();
 </script>
 {% endblock %}

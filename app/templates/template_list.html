@@ -153,9 +153,19 @@
           <span class="text-sm text-slate-700">Trial mode (dry run)</span>
         </label>
       </div>
+      
+      <!-- Status message area (shown during submission) -->
+      <div id="runStatusMsg" class="hidden mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <div class="flex items-center gap-2 text-blue-700 text-sm">
+          <i class="fa-solid fa-circle-notch animate-spin"></i>
+          <span id="runStatusText">Connecting to remote machine via SSH...</span>
+        </div>
+        <p class="text-xs text-blue-600 mt-1">This may take up to 15 seconds. Please wait...</p>
+      </div>
+      
       <div class="flex justify-end gap-3">
-        <button type="button" onclick="closeRunModal()" class="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50">Cancel</button>
-        <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+        <button type="button" onclick="closeRunModal()" class="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors">Cancel</button>
+        <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
           <i class="fa-solid fa-play mr-2"></i>Start Job
         </button>
       </div>
@@ -164,7 +174,13 @@
 </div>
 
 <script>
+// Track if a submission is in progress to prevent double clicks
+let isSubmitting = false;
+
 function runTemplate(templateId, workspace) {
+  // Prevent opening modal if already submitting
+  if (isSubmitting) return;
+  
   document.getElementById('runTemplateId').value = templateId;
   if (workspace) {
     document.getElementById('runWorkspace').value = workspace;
@@ -174,16 +190,79 @@ function runTemplate(templateId, workspace) {
 }
 
 function closeRunModal() {
+  // Prevent closing during submission
+  if (isSubmitting) return;
+  
   document.getElementById('runModal').classList.add('hidden');
   document.getElementById('runModal').classList.remove('flex');
 }
 
+function setSubmitButtonState(loading, statusText) {
+  const submitBtn = document.querySelector('#runForm button[type="submit"]');
+  const cancelBtn = document.querySelector('#runForm button[type="button"]');
+  const statusMsg = document.getElementById('runStatusMsg');
+  const statusTextEl = document.getElementById('runStatusText');
+  
+  if (loading) {
+    isSubmitting = true;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin mr-2"></i>Starting...';
+    cancelBtn.disabled = true;
+    cancelBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    // Show status message
+    statusMsg.classList.remove('hidden');
+    if (statusText) statusTextEl.textContent = statusText;
+    // Disable form inputs
+    document.getElementById('runWorkspace').disabled = true;
+    document.getElementById('runChangelist').disabled = true;
+    document.getElementById('runTrial').disabled = true;
+  } else {
+    isSubmitting = false;
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = '<i class="fa-solid fa-play mr-2"></i>Start Job';
+    cancelBtn.disabled = false;
+    cancelBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    // Hide status message
+    statusMsg.classList.add('hidden');
+    // Re-enable form inputs
+    document.getElementById('runWorkspace').disabled = false;
+    document.getElementById('runChangelist').disabled = false;
+    document.getElementById('runTrial').disabled = false;
+  }
+}
+
 document.getElementById('runForm').addEventListener('submit', async function(e) {
   e.preventDefault();
+  
+  // Prevent double submission
+  if (isSubmitting) {
+    console.log('Submission already in progress, ignoring click');
+    return;
+  }
+  
   const templateId = document.getElementById('runTemplateId').value;
   const workspace = document.getElementById('runWorkspace').value;
   const changelist = document.getElementById('runChangelist').value;
   const trial = document.getElementById('runTrial').checked;
+  
+  // Show loading state immediately with initial status
+  setSubmitButtonState(true, 'Connecting to remote machine via SSH...');
+  
+  // Update status message after a delay to show progress
+  const statusUpdates = [
+    { delay: 3000, text: 'Deploying agent on remote machine...' },
+    { delay: 6000, text: 'Waiting for agent to connect back...' },
+    { delay: 10000, text: 'Almost there, establishing connection...' }
+  ];
+  
+  const statusTimers = statusUpdates.map(update => 
+    setTimeout(() => {
+      const statusTextEl = document.getElementById('runStatusText');
+      if (statusTextEl && isSubmitting) {
+        statusTextEl.textContent = update.text;
+      }
+    }, update.delay)
+  );
   
   try {
     const response = await fetch(`/api/templates/${templateId}/run`, {
@@ -193,12 +272,22 @@ document.getElementById('runForm').addEventListener('submit', async function(e) 
     });
     const data = await response.json();
     
+    // Clear status timers
+    statusTimers.forEach(t => clearTimeout(t));
+    
     if (response.ok) {
+      // Show success briefly before redirect
+      const statusTextEl = document.getElementById('runStatusText');
+      if (statusTextEl) statusTextEl.textContent = 'Job started! Redirecting...';
       window.location.href = `/jobs/${data.job_id}`;
     } else {
+      setSubmitButtonState(false);
       alert('Failed to start job: ' + (data.error || 'Unknown error'));
     }
   } catch (err) {
+    // Clear status timers on error
+    statusTimers.forEach(t => clearTimeout(t));
+    setSubmitButtonState(false);
     alert('Error: ' + err.message);
   }
 });
