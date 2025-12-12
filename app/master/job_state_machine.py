@@ -248,7 +248,8 @@ class JobStateMachine:
         branch_spec = spec.get('branch_spec')
         source = spec.get('source', '')
         target = spec.get('target', '')
-        source_rev_change = spec.get('changelist')  # Source revision/changelist for integrate
+        # Use fetched source_changelist (from GET_LATEST_CL) if available, otherwise fall back to spec
+        source_rev_change = job.get('source_changelist') or spec.get('changelist')
         
         # Build integrate command with explicit parameters
         integrate_cmd = ""
