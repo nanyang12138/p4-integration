@@ -215,3 +215,33 @@ def get_global_templates_dir() -> str:
         pass
     
     return templates_dir
+
+
+def get_private_templates_dir(username: str = None) -> str:
+    """Get the directory for private templates.
+    
+    Returns the path to data/templates/private/ directory,
+    or data/templates/private/{username}/ if username is provided.
+    
+    Args:
+        username: Optional username for user-specific directory
+        
+    Returns:
+        Path to the private templates directory
+    """
+    # Get the project root directory
+    current_file = os.path.abspath(__file__)
+    app_dir = os.path.dirname(current_file)
+    project_root = os.path.dirname(app_dir)
+    
+    if username:
+        templates_dir = os.path.join(project_root, "data", "templates", "private", username)
+    else:
+        templates_dir = os.path.join(project_root, "data", "templates", "private")
+    
+    try:
+        os.makedirs(templates_dir, exist_ok=True)
+    except OSError:
+        pass
+    
+    return templates_dir

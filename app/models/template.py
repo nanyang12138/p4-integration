@@ -11,7 +11,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from app.config import get_workspace_data_dir, get_global_templates_dir
+from app.config import get_global_templates_dir, get_private_templates_dir
 
 logger = logging.getLogger("TemplateManager")
 
@@ -22,12 +22,9 @@ class TemplateManager:
     def __init__(self):
         self.global_templates_dir = get_global_templates_dir()
     
-    def _get_user_templates_dir(self, workspace: str, username: str) -> str:
-        """Get directory for user's private templates in a workspace."""
-        ws_data_dir = get_workspace_data_dir(workspace)
-        user_dir = os.path.join(ws_data_dir, "templates", username)
-        os.makedirs(user_dir, exist_ok=True)
-        return user_dir
+    def _get_user_templates_dir(self, username: str) -> str:
+        """Get directory for user's private templates (centralized storage)."""
+        return get_private_templates_dir(username)
     
     def _load_template_file(self, filepath: str) -> Optional[Dict[str, Any]]:
         """Load a template from a YAML file."""
@@ -59,7 +56,7 @@ class TemplateManager:
         config: Dict[str, Any],
         owner: str,
         template_type: str = "private",
-        workspace: str = None
+        workspace: str = None  # Kept for backward compatibility but not used for storage
     ) -> Optional[Dict[str, Any]]:
         """Create a new template.
         
@@ -68,7 +65,7 @@ class TemplateManager:
             config: Template configuration (p4, ssh, branch_spec, etc.)
             owner: Username of the template creator
             template_type: "global" or "private"
-            workspace: Required for private templates
+            workspace: Deprecated - no longer used for storage location
             
         Returns:
             Created template dict or None on failure
@@ -85,14 +82,11 @@ class TemplateManager:
             "config": config
         }
         
-        # Determine save location
+        # Determine save location (centralized storage)
         if template_type == "global":
             filepath = os.path.join(self.global_templates_dir, f"{template_id}.yaml")
         else:
-            if not workspace:
-                logger.error("workspace is required for private templates")
-                return None
-            user_dir = self._get_user_templates_dir(workspace, owner)
+            user_dir = self._get_user_templates_dir(owner)
             filepath = os.path.join(user_dir, f"{template_id}.yaml")
         
         if self._save_template_file(filepath, template):
@@ -107,7 +101,7 @@ class TemplateManager:
         
         Args:
             template_id: Template ID
-            workspace: Workspace path for private template lookup
+            workspace: Deprecated - no longer used
             username: Username for private template lookup
         """
         # Check global templates first
@@ -116,9 +110,9 @@ class TemplateManager:
         if template:
             return template
         
-        # Check private templates if workspace and username provided
-        if workspace and username:
-            user_dir = self._get_user_templates_dir(workspace, username)
+        # Check private templates if username provided (centralized storage)
+        if username:
+            user_dir = self._get_user_templates_dir(username)
             private_path = os.path.join(user_dir, f"{template_id}.yaml")
             template = self._load_template_file(private_path)
             if template:
@@ -141,11 +135,18 @@ class TemplateManager:
             logger.error(f"Failed to list global templates: {e}")
         return templates
     
-    def list_user_templates(self, workspace: str, username: str) -> List[Dict[str, Any]]:
-        """List all private templates for a user in a workspace."""
+    def list_user_templates(self, workspace: str = None, username: str = None) -> List[Dict[str, Any]]:
+        """List all private templates for a user (centralized storage).
+        
+        Args:
+            workspace: Deprecated - no longer used
+            username: Username to list templates for
+        """
         templates = []
+        if not username:
+            return templates
         try:
-            user_dir = self._get_user_templates_dir(workspace, username)
+            user_dir = self._get_user_templates_dir(username)
             if os.path.exists(user_dir):
                 for filename in os.listdir(user_dir):
                     if filename.endswith('.yaml'):
@@ -161,11 +162,15 @@ class TemplateManager:
         """List all templates available to a user.
         
         Returns global templates + user's private templates.
+        
+        Args:
+            workspace: Deprecated - no longer used
+            username: Username to list private templates for
         """
         templates = self.list_global_templates()
         
-        if workspace and username:
-            user_templates = self.list_user_templates(workspace, username)
+        if username:
+            user_templates = self.list_user_templates(username=username)
             templates.extend(user_templates)
         
         # Sort by name
@@ -184,7 +189,7 @@ class TemplateManager:
         Args:
             template_id: Template ID to update
             updates: Dict with fields to update (name, config)
-            workspace: Workspace path for private templates
+            workspace: Deprecated - no longer used
             username: Username for permission check
         """
         template = self.get_template(template_id, workspace, username)
@@ -203,13 +208,11 @@ class TemplateManager:
             template['config'] = updates['config']
         template['updated_at'] = datetime.now().isoformat()
         
-        # Determine save location
+        # Determine save location (centralized storage)
         if template.get('type') == 'global':
             filepath = os.path.join(self.global_templates_dir, f"{template_id}.yaml")
         else:
-            if not workspace:
-                return None
-            user_dir = self._get_user_templates_dir(workspace, template.get('owner', username))
+            user_dir = self._get_user_templates_dir(template.get('owner', username))
             filepath = os.path.join(user_dir, f"{template_id}.yaml")
         
         if self._save_template_file(filepath, template):
@@ -227,7 +230,7 @@ class TemplateManager:
         
         Args:
             template_id: Template ID to delete
-            workspace: Workspace path for private templates
+            workspace: Deprecated - no longer used
             username: Username for permission check
         """
         template = self.get_template(template_id, workspace, username)
@@ -239,13 +242,11 @@ class TemplateManager:
             logger.warning(f"User {username} cannot delete template {template_id} owned by {template.get('owner')}")
             return False
         
-        # Determine file location
+        # Determine file location (centralized storage)
         if template.get('type') == 'global':
             filepath = os.path.join(self.global_templates_dir, f"{template_id}.yaml")
         else:
-            if not workspace:
-                return False
-            user_dir = self._get_user_templates_dir(workspace, template.get('owner', username))
+            user_dir = self._get_user_templates_dir(template.get('owner', username))
             filepath = os.path.join(user_dir, f"{template_id}.yaml")
         
         try:

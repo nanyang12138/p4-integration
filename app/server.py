@@ -367,11 +367,10 @@ def register_routes(app, state_machine):
     def template_list():
         """List all templates"""
         username = session.get('p4_user')
-        # Get workspace from session or use a default
-        workspace = session.get('last_workspace', '')
         
         global_templates = template_manager.list_global_templates()
-        private_templates = template_manager.list_user_templates(workspace, username) if workspace else []
+        # Private templates now use centralized storage, no workspace needed
+        private_templates = template_manager.list_user_templates(username=username)
         
         return render_template('template_list.html',
             global_templates=global_templates,
@@ -389,9 +388,9 @@ def register_routes(app, state_machine):
     def template_edit(template_id):
         """Edit template form"""
         username = session.get('p4_user')
-        workspace = session.get('last_workspace', '')
         
-        template = template_manager.get_template(template_id, workspace, username)
+        # Private templates now use centralized storage, no workspace needed
+        template = template_manager.get_template(template_id, username=username)
         if not template:
             return render_template('error.html',
                 error_type='warning',

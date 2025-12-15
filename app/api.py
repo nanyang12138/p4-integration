@@ -15,19 +15,18 @@ def list_templates():
     """List all templates available to the current user.
     
     Query params:
-    - workspace: Workspace path for private template lookup
     - type: Filter by type ('global', 'private', or 'all')
     """
     username = session.get('p4_user')
-    workspace = request.args.get('workspace')
     template_type = request.args.get('type', 'all')
     
+    # Private templates now use centralized storage, no workspace needed
     if template_type == 'global':
         templates = template_manager.list_global_templates()
-    elif template_type == 'private' and workspace and username:
-        templates = template_manager.list_user_templates(workspace, username)
+    elif template_type == 'private' and username:
+        templates = template_manager.list_user_templates(username=username)
     else:
-        templates = template_manager.list_all_templates(workspace, username)
+        templates = template_manager.list_all_templates(username=username)
     
     return jsonify({"templates": templates, "count": len(templates)})
 
@@ -40,7 +39,7 @@ def create_template():
     - name: Template name (required)
     - config: Template configuration (required)
     - type: "global" or "private" (default: "private")
-    - workspace: Required for private templates
+    - workspace: Optional, stored in config but not used for storage location
     """
     data = request.json
     if not data:
@@ -49,31 +48,24 @@ def create_template():
     name = data.get('name')
     config = data.get('config')
     template_type = data.get('type', 'private')
-    workspace = data.get('workspace')
     username = session.get('p4_user')
     
     if not name:
         return jsonify({"error": "name is required"}), 400
     if not config:
         return jsonify({"error": "config is required"}), 400
-    if template_type == 'private' and not workspace:
-        return jsonify({"error": "workspace is required for private templates"}), 400
     if not username:
         return jsonify({"error": "Not logged in"}), 401
     
+    # Private templates now use centralized storage, no workspace needed for storage
     template = template_manager.create_template(
         name=name,
         config=config,
         owner=username,
-        template_type=template_type,
-        workspace=workspace
+        template_type=template_type
     )
     
     if template:
-        # Update session workspace so the user can see the new template in the list
-        if template_type == 'private' and workspace:
-            session['last_workspace'] = workspace
-            
         return jsonify({"template": template}), 201
     return jsonify({"error": "Failed to create template"}), 500
 
@@ -82,9 +74,9 @@ def create_template():
 def get_template(template_id):
     """Get a template by ID."""
     username = session.get('p4_user')
-    workspace = request.args.get('workspace')
     
-    template = template_manager.get_template(template_id, workspace, username)
+    # Private templates now use centralized storage, no workspace needed
+    template = template_manager.get_template(template_id, username=username)
     if template:
         return jsonify(template)
     return jsonify({"error": "Template not found"}), 404
@@ -97,14 +89,12 @@ def update_template(template_id):
     Request JSON:
     - name: New name (optional)
     - config: New config (optional)
-    - workspace: Required for private templates
     """
     data = request.json
     if not data:
         return jsonify({"error": "Request body is required"}), 400
     
     username = session.get('p4_user')
-    workspace = data.get('workspace')
     
     if not username:
         return jsonify({"error": "Not logged in"}), 401
@@ -115,7 +105,8 @@ def update_template(template_id):
     if 'config' in data:
         updates['config'] = data['config']
     
-    template = template_manager.update_template(template_id, updates, workspace, username)
+    # Private templates now use centralized storage, no workspace needed
+    template = template_manager.update_template(template_id, updates, username=username)
     if template:
         return jsonify({"template": template})
     return jsonify({"error": "Template not found or permission denied"}), 404
@@ -125,12 +116,12 @@ def update_template(template_id):
 def delete_template(template_id):
     """Delete a template."""
     username = session.get('p4_user')
-    workspace = request.args.get('workspace')
     
     if not username:
         return jsonify({"error": "Not logged in"}), 401
     
-    success = template_manager.delete_template(template_id, workspace, username)
+    # Private templates now use centralized storage, no workspace needed
+    success = template_manager.delete_template(template_id, username=username)
     if success:
         return jsonify({"status": "deleted"})
     return jsonify({"error": "Template not found or permission denied"}), 404
@@ -148,13 +139,12 @@ def run_template(template_id):
     data = request.json or {}
     username = session.get('p4_user')
     p4_password = session.get('p4_password')
-    workspace = data.get('workspace')
     
     if not username or not p4_password:
         return jsonify({"error": "Not logged in"}), 401
     
-    # Get template
-    template = template_manager.get_template(template_id, workspace, username)
+    # Get template (centralized storage, no workspace needed for lookup)
+    template = template_manager.get_template(template_id, username=username)
     if not template:
         return jsonify({"error": "Template not found"}), 404
     
@@ -282,8 +272,8 @@ def create_schedule():
     if not cron:
         return jsonify({"error": "cron expression is required"}), 400
     
-    # Get workspace from template
-    template = template_manager.get_template(template_id, session.get('last_workspace', ''), username)
+    # Get workspace from template (centralized storage, no workspace needed for lookup)
+    template = template_manager.get_template(template_id, username=username)
     if not template:
         return jsonify({"error": "Template not found"}), 404
     
