@@ -195,6 +195,21 @@ class P4Agent:
             except Exception as e:
                 logging.error(f"Failed to kill cmd_id={cmd_id}: {e}")
     
+    async def cleanup_processes(self):
+        """Terminate all running subprocesses to prevent zombie processes"""
+        if not self.running_commands:
+            return
+        logging.info(f"Cleaning up {len(self.running_commands)} running process(es)")
+        for cmd_id, process in list(self.running_commands.items()):
+            try:
+                process.terminate()
+                logging.info(f"Terminated process for cmd_id={cmd_id} (pid={process.pid})")
+            except ProcessLookupError:
+                logging.info(f"Process for cmd_id={cmd_id} already exited")
+            except Exception as e:
+                logging.warning(f"Failed to terminate process for cmd_id={cmd_id}: {e}")
+        self.running_commands.clear()
+
     async def heartbeat_loop(self):
         """Send periodic heartbeats"""
         while self.is_running:
@@ -221,6 +236,7 @@ class P4Agent:
                     await self.handle_kill_cmd(message)
                 elif msg_type == "SHUTDOWN":
                     logging.info("Received shutdown signal")
+                    await self.cleanup_processes()
                     self.is_running = False
                     break
                     
@@ -258,6 +274,8 @@ class P4Agent:
             except Exception as e:
                 logging.error(f"Error in main loop: {e}")
             finally:
+                # Cleanup running processes to prevent zombies
+                await self.cleanup_processes()
                 # Cleanup connection
                 if self.writer:
                     try:

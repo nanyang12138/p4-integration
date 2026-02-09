@@ -32,6 +32,14 @@ class Stage(Enum):
     DONE = "DONE"
     ERROR = "ERROR"
 
+# Stages where P4 files may be opened and need revert on failure.
+# Used by error handlers and cancel logic to decide if CLEANUP is needed.
+_NEEDS_CLEANUP_STAGE_VALUES = {
+    Stage.INTEGRATE.value, Stage.RESOLVE_PASS_1.value,
+    Stage.RESOLVE_CHECK.value, Stage.NEEDS_RESOLVE.value,
+    Stage.PRE_SUBMIT.value, Stage.SHELVE.value
+}
+
 class JobStateMachine:
     """Core business logic state machine"""
     def __init__(self, agent_server, config: dict):
@@ -479,22 +487,25 @@ echo "CHANGELIST:$cl"
         
         for job_id in affected_jobs:
             job = self.jobs[job_id]
+            current_stage = job.get("stage", "unknown")
             error_msg = f"Agent connection lost (no heartbeat for {message.get('timeout_seconds', 30):.0f}s)"
             
             # Log the error
             self._add_log_entry(job_id, "stderr", f"ERROR: {error_msg}")
             
-            # Transition to ERROR state
-            job["stage"] = Stage.ERROR.value
-            job["error"] = error_msg
-            job["updated_at"] = datetime.now().isoformat()
-            job["history"].append({
-                "from": job.get("stage"),
-                "to": Stage.ERROR.value,
-                "at": datetime.now().isoformat(),
-                "reason": "agent_timeout"
-            })
+            # Warn about manual cleanup if files may be opened
+            # (agent is gone so we can't run CLEANUP/revert automatically)
+            if current_stage in _NEEDS_CLEANUP_STAGE_VALUES:
+                p4_client = job.get("spec", {}).get("p4", {}).get("client", "unknown")
+                self._add_log_entry(job_id, "stderr",
+                    f"[WARNING] Agent timed out during stage with opened files. "
+                    f"Manual cleanup may be needed: p4 -c {p4_client} revert //...")
             
+            # Set error before transition_to so it's preserved
+            job["error"] = error_msg
+            
+            # Use transition_to for proper cleanup (workspace release, monitor stop, agent shutdown)
+            await self.transition_to(job_id, Stage.ERROR)
             logger.error(f"Job {job_id} failed due to agent timeout")
     
     async def _handle_agent_disconnected(self, agent_id: str, message: dict):
@@ -525,27 +536,18 @@ echo "CHANGELIST:$cl"
                 self._add_log_entry(job_id, "stderr", f"[CONNECTION ERROR] {error_msg}")
                 
                 # Warn about manual cleanup if files may be opened
-                needs_cleanup_stages = {
-                    Stage.INTEGRATE.value, Stage.RESOLVE_PASS_1.value,
-                    Stage.RESOLVE_CHECK.value, Stage.NEEDS_RESOLVE.value,
-                    Stage.PRE_SUBMIT.value, Stage.SHELVE.value
-                }
-                if current_stage in needs_cleanup_stages:
+                # (agent is gone so we can't run CLEANUP/revert automatically)
+                if current_stage in _NEEDS_CLEANUP_STAGE_VALUES:
                     p4_client = job.get("spec", {}).get("p4", {}).get("client", "unknown")
                     self._add_log_entry(job_id, "stderr",
                         f"[WARNING] Agent lost during stage with opened files. "
                         f"Manual cleanup may be needed: p4 -c {p4_client} revert //...")
                 
+                # Set error before transition_to so it's preserved
                 job["error"] = error_msg
-                job["stage"] = Stage.ERROR.value
-                job["updated_at"] = datetime.now().isoformat()
-                job["history"].append({
-                    "from": current_stage,
-                    "to": Stage.ERROR.value,
-                    "at": datetime.now().isoformat(),
-                    "reason": "agent_disconnected"
-                })
-                self._release_workspace(job_id)
+                
+                # Use transition_to for proper cleanup (workspace release, monitor stop, agent shutdown)
+                await self.transition_to(job_id, Stage.ERROR)
                 logger.error(f"Job {job_id} failed due to agent disconnection during active command")
 
     async def _handle_cmd_started(self, message: dict):
@@ -618,13 +620,6 @@ echo "CHANGELIST:$cl"
     async def _decide_next_stage(self, job_id: str, current_stage: Stage, exit_code: int) -> Optional[Stage]:
         """Determine next stage based on result"""
         
-        # Stages that need cleanup on failure (files have been opened by p4 integrate)
-        _NEEDS_CLEANUP_STAGES = {
-            Stage.INTEGRATE, Stage.RESOLVE_PASS_1,
-            Stage.RESOLVE_CHECK, Stage.NEEDS_RESOLVE,
-            Stage.PRE_SUBMIT, Stage.SHELVE
-        }
-        
         # CLEANUP always goes to ERROR regardless of exit code
         if current_stage == Stage.CLEANUP:
             if exit_code == 0:
@@ -644,7 +639,7 @@ echo "CHANGELIST:$cl"
                 return self._analyze_resolve_check(job_id)
             
             # For other stages, route to CLEANUP if files may be opened
-            if current_stage in _NEEDS_CLEANUP_STAGES:
+            if current_stage.value in _NEEDS_CLEANUP_STAGE_VALUES:
                 return Stage.CLEANUP
             return Stage.ERROR
             
@@ -933,13 +928,16 @@ echo "CHANGELIST:$cl"
         if not workspace:
             return
         
-        # Release the workspace and get next queued job if any
-        next_job = self._workspace_queue.release(workspace, job_id)
-        
-        if next_job:
-            # Start the next queued job
-            logger.info(f"Starting next queued job {next_job.job_id} for workspace {workspace}")
-            # The callback will handle starting the job
+        try:
+            # Release the workspace and get next queued job if any
+            next_job = self._workspace_queue.release(workspace, job_id)
+            
+            if next_job:
+                # Start the next queued job
+                logger.info(f"Starting next queued job {next_job.job_id} for workspace {workspace}")
+                # The callback will handle starting the job
+        except Exception as e:
+            logger.error(f"Failed to release workspace {workspace} for job {job_id}: {e}")
 
     def _add_log_entry(self, job_id: str, stream: str, data: str):
         """Add a log entry to a job's log (both in-memory and persisted to file).
@@ -1146,12 +1144,7 @@ echo "CHANGELIST:$cl"
         
         # Determine if cleanup is needed (files may be opened after INTEGRATE)
         current_stage = job.get("stage", "INIT")
-        needs_cleanup_stages = {
-            Stage.INTEGRATE.value, Stage.RESOLVE_PASS_1.value,
-            Stage.RESOLVE_CHECK.value, Stage.NEEDS_RESOLVE.value,
-            Stage.PRE_SUBMIT.value, Stage.SHELVE.value
-        }
-        if current_stage in needs_cleanup_stages:
+        if current_stage in _NEEDS_CLEANUP_STAGE_VALUES:
             await self.transition_to(job_id, Stage.CLEANUP)
         else:
             await self.transition_to(job_id, Stage.ERROR)
