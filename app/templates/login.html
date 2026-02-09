@@ -14,11 +14,19 @@
         Please enter your Perforce credentials
       </p>
     </div>
+    {% if error %}
+    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">
+      <div class="flex items-center">
+        <i class="fa-solid fa-circle-exclamation mr-2"></i>
+        <span>{{ error }}</span>
+      </div>
+    </div>
+    {% endif %}
     <form class="mt-8 space-y-6" action="/login" method="POST">
       <div class="rounded-md shadow-sm -space-y-px">
         <div>
           <label for="p4_user" class="sr-only">P4 Username</label>
-          <input id="p4_user" name="p4_user" type="text" required class="appearance-none rounded-none rounded-t-md relative block w-full px-3 py-2 border border-slate-300 placeholder-slate-500 text-slate-900 focus:outline-none focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm" placeholder="P4 Username">
+          <input id="p4_user" name="p4_user" type="text" required class="appearance-none rounded-none rounded-t-md relative block w-full px-3 py-2 border border-slate-300 placeholder-slate-500 text-slate-900 focus:outline-none focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm" placeholder="P4 Username" value="{{ last_user or '' }}">
         </div>
         <div>
           <label for="p4_password" class="sr-only">P4 Password</label>
@@ -42,11 +50,13 @@
 (function(){
   const userInput = document.getElementById('p4_user');
   
-  // Load saved username
+  // Load saved username (only if server didn't provide one from failed login)
   if(userInput) {
-    const savedUser = localStorage.getItem('p4_integ_last_user');
-    if(savedUser) {
-      userInput.value = savedUser;
+    if(!userInput.value) {
+      const savedUser = localStorage.getItem('p4_integ_last_user');
+      if(savedUser) {
+        userInput.value = savedUser;
+      }
     }
     
     // Save username on submit

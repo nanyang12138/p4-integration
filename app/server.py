@@ -7,6 +7,7 @@ from app.models.template import template_manager
 from app import workspace_queue, scheduler_manager
 import uuid
 import os
+import subprocess
 from datetime import datetime
 from functools import wraps
 
@@ -18,14 +19,76 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def _validate_p4_credentials(p4_user: str, p4_password: str) -> tuple:
+    """Validate P4 credentials by running 'p4 login' against the configured P4 server.
+    
+    Returns:
+        (is_valid: bool, error_message: str or None)
+        - (True, None) on success
+        - (False, error_msg) on authentication failure or system error
+    """
+    cfg = current_app.config.get("APP_CONFIG", {})
+    p4_cfg = cfg.get("p4", {})
+    p4_bin = p4_cfg.get("bin", "/tool/pandora64/bin/p4")
+    p4_port = p4_cfg.get("port", "") or "atlvp4p01.amd.com:1677"
+    
+    try:
+        result = subprocess.run(
+            [p4_bin, "-p", p4_port, "-u", p4_user, "login"],
+            input=(p4_password + "\n").encode(),
+            capture_output=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0:
+            current_app.logger.info(f"P4 login validation succeeded for user {p4_user}")
+            return (True, None)
+        else:
+            # Parse P4 error from stderr
+            stderr = result.stderr.decode("utf-8", errors="replace").strip()
+            # Common P4 errors: "Password invalid.", "User xxx doesn't exist"
+            error_msg = stderr if stderr else "Authentication failed"
+            current_app.logger.warning(f"P4 login validation failed for user {p4_user}: {error_msg}")
+            return (False, error_msg)
+            
+    except FileNotFoundError:
+        current_app.logger.error(f"P4 binary not found at {p4_bin}")
+        return (False, f"P4 binary not found at {p4_bin}. Please verify the installation.")
+    except subprocess.TimeoutExpired:
+        current_app.logger.error(f"P4 login timed out connecting to {p4_port}")
+        return (False, "P4 server connection timed out. Please check the server status and try again.")
+    except Exception as e:
+        current_app.logger.error(f"Unexpected error during P4 login validation: {e}")
+        return (False, f"Validation error: {e}")
+
+
 def register_routes(app, state_machine):
     
     @app.route('/login', methods=['GET', 'POST'])
     def login():
         if request.method == 'POST':
-            session['p4_user'] = request.form.get('p4_user')
-            session['p4_password'] = request.form.get('p4_password')
-            current_app.logger.info(f"Login: User={session['p4_user']}, Password length={len(session.get('p4_password', ''))}")
+            p4_user = (request.form.get('p4_user') or '').strip()
+            p4_password = request.form.get('p4_password') or ''
+            
+            # Server-side empty check
+            if not p4_user or not p4_password:
+                return render_template('login.html',
+                    error="Username and password are required.",
+                    last_user=p4_user)
+            
+            # Validate credentials against P4 server
+            is_valid, error_msg = _validate_p4_credentials(p4_user, p4_password)
+            
+            if not is_valid:
+                current_app.logger.warning(f"Login rejected for user {p4_user}: {error_msg}")
+                return render_template('login.html',
+                    error=error_msg,
+                    last_user=p4_user)
+            
+            # Credentials valid (or validation skipped) - store in session
+            session['p4_user'] = p4_user
+            session['p4_password'] = p4_password
+            current_app.logger.info(f"Login: User={p4_user}, Password length={len(p4_password)}")
             return redirect(url_for('admin_dashboard'))
         return render_template('login.html')
 
