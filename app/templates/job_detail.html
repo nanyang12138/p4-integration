@@ -171,22 +171,17 @@
         </form>
         {% endif %}
 
-        {% if job.status in ['ready_to_submit'] %}
-        <form id="form-continue-submit">
-          <button class="w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all" type="submit">
-            <i class="fa-solid fa-check mr-2"></i> Submit Changelist
-          </button>
-          <p class="text-xs text-center text-slate-500 mt-2">Shelve and push via p4push.</p>
-        </form>
-        {% endif %}
-
         <div class="pt-2 flex gap-3">
+           {% if job.status not in ['done', 'error', 'cancelled', 'failed'] %}
            <button class="flex-1 px-4 py-2 border border-red-200 rounded-lg shadow-sm text-sm font-medium text-red-600 bg-white hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed" type="button" id="btn-cancel">
              Cancel
            </button>
+           {% endif %}
+           {% if job.status in ['done', 'error', 'cancelled', 'failed'] %}
            <button class="flex-1 px-4 py-2 border border-slate-200 rounded-lg shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed" type="button" id="btn-retry">
              Retry
            </button>
+           {% endif %}
         </div>
         
         <!-- Retry status message -->
@@ -238,23 +233,6 @@
             <pre id="commands-text" class="text-xs font-mono text-green-400 whitespace-pre-wrap break-all"></pre>
           </div>
         </div>
-      </div>
-    </div>
-    {% endif %}
-
-    {% if job.blocked_files and job.status == 'blocked' %}
-    <div class="bg-white rounded-xl shadow-sm border border-red-200 overflow-hidden">
-       <div class="bg-red-50 px-6 py-4 border-b border-red-100">
-        <h3 class="text-sm font-bold text-red-800 flex items-center gap-2">
-          <i class="fa-solid fa-ban"></i> Blocked Files
-        </h3>
-      </div>
-      <div class="p-6">
-        <ul class="list-disc list-inside text-sm text-slate-700 font-mono">
-        {% for f in job.blocked_files %}
-          <li>{{ f }}</li>
-        {% endfor %}
-        </ul>
       </div>
     </div>
     {% endif %}
@@ -331,7 +309,7 @@
       // Show loading state
       btnRetry.disabled = true;
       btnRetry.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin mr-1"></i> Retrying...';
-      btnCancel.disabled = true;
+      if(btnCancel) btnCancel.disabled = true;
       
       // Show status message
       if(retryStatusMsg) retryStatusMsg.classList.remove('hidden');
@@ -358,7 +336,7 @@
             alert(res.error || 'Retry failed'); 
             btnRetry.disabled = false;
             btnRetry.textContent = 'Retry';
-            btnCancel.disabled = false;
+            if(btnCancel) btnCancel.disabled = false;
             if(retryStatusMsg) retryStatusMsg.classList.add('hidden');
           } 
         })
@@ -367,7 +345,7 @@
           alert('Retry failed: ' + err.message);
           btnRetry.disabled = false;
           btnRetry.textContent = 'Retry';
-          btnCancel.disabled = false;
+          if(btnCancel) btnCancel.disabled = false;
           if(retryStatusMsg) retryStatusMsg.classList.add('hidden');
         });
     });
@@ -398,20 +376,6 @@
     });
   }
   
-  var formContinueSubmit = document.getElementById('form-continue-submit');
-  if(formContinueSubmit){
-    formContinueSubmit.addEventListener('submit', function(e){
-      e.preventDefault();
-      if(!confirm('Continue to submit? This will shelve the changelist and push via p4push.')) return;
-      var btn = formContinueSubmit.querySelector('button[type="submit"]');
-      if(btn){ btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin mr-2"></i> Submitting...'; }
-      fetch('/api/jobs/' + jobId + '/continue_to_submit', {method:'POST'})
-        .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-        .then(function(res){ alert('Submit initiated successfully'); location.reload(); })
-        .catch(function(err){ alert('Submit failed: ' + err.message); if(btn){ btn.disabled = false; btn.textContent = 'Submit Changelist'; } });
-    });
-  }
-
   // Resolve Commands Logic
   var btnGenerateAll = document.getElementById('btn-generate-all');
   var btnGenerateIndividual = document.getElementById('btn-generate-individual');
@@ -474,7 +438,7 @@
     console.log('[JobDetail] All timers stopped - job in terminal state');
   }
   
-  // Current job status (will be updated by SSE or API)
+  // Current job status (will be updated by API polling)
   var currentStatus = "{{ job.status }}";
 
   // ========== Log Fetching ==========
@@ -542,10 +506,18 @@
         sourceClValue.className = 'font-mono font-medium text-slate-700';
       }
       
-      // Check if status changed to terminal state
+      // Check if status changed to terminal state - reload page to update
+      // server-rendered elements (Cancel/Retry buttons, status badge, etc.)
       if (job.status && isTerminalState(job.status) && !isTerminalState(currentStatus)) {
         currentStatus = job.status;
         stopAllTimers();
+        location.reload();
+        return;
+      }
+      
+      // Update status indicator in real-time during polling
+      if (job.status) {
+        updateStatusUI(job.status, job.stage);
       }
     } catch (error) {
       console.error('Error updating source CL:', error);
@@ -565,29 +537,18 @@
         else { stageText.classList.add('hidden'); }
     }
 
-    // Config
+    // Config - maps API status values to UI styles
+    // Possible statuses from API: 'running', 'done', 'error', 'needs_resolve'
     const config = {
       'running': { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', animate: true },
-      'integrate': { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', animate: true },
-      'resolving': { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', animate: true },
-      'resolve': { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', animate: true },
-      'submitted': { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', animate: false },
       'done': { color: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200', animate: false },
-      
-      'pending': { color: 'bg-slate-400', bg: 'bg-slate-50', border: 'border-slate-200', animate: true },
-      'queued': { color: 'bg-slate-400', bg: 'bg-slate-50', border: 'border-slate-200', animate: false },
-      
-      'blocked': { color: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-200', animate: true },
       'needs_resolve': { color: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-200', animate: true },
-      
-      'error': { color: 'bg-red-500', bg: 'bg-red-50', border: 'border-red-200', animate: false },
-      'failed': { color: 'bg-red-500', bg: 'bg-red-50', border: 'border-red-200', animate: false },
-      'cancelled': { color: 'bg-slate-400', bg: 'bg-slate-50', border: 'border-slate-200', animate: false }
+      'error': { color: 'bg-red-500', bg: 'bg-red-50', border: 'border-red-200', animate: false }
     };
     
     // Normalize status to lowercase for matching
     const normalizedStatus = (status || '').toLowerCase();
-    const c = config[normalizedStatus] || config['queued'];
+    const c = config[normalizedStatus] || config['running'];
     
     if(indicator) {
       indicator.className = `w-3 h-3 rounded-full shadow-sm transition-all duration-300 ${c.color} ${c.animate ? 'animate-pulse' : ''}`;
@@ -596,27 +557,6 @@
       container.className = `mb-6 p-4 rounded-xl border transition-all duration-300 flex items-center justify-between ${c.bg} ${c.border}`;
     }
   }
-
-  // SSE for Status
-  try{
-    if(window.EventSource){
-      var es = new EventSource('/api/stream?job_id=' + encodeURIComponent(jobId));
-      es.onmessage = function(ev){
-        try{
-          var data = JSON.parse(ev.data);
-          if(data) {
-            updateStatusUI(data.status, data.stage);
-            
-            // Check if status changed to terminal state
-            if (data.status && isTerminalState(data.status) && !isTerminalState(currentStatus)) {
-              currentStatus = data.status;
-              stopAllTimers();
-            }
-          }
-        }catch(e){}
-      };
-    }
-  }catch(e){}
 
   // Process Monitor
   function loadProcessStatus(){

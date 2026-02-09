@@ -89,6 +89,7 @@
             <td class="px-6 py-4">
               {% set status_map = {
                 'INIT': {'status': 'pending', 'color': 'bg-slate-100 text-slate-700 border-slate-200'},
+                'GET_LATEST_CL': {'status': 'running', 'color': 'bg-green-100 text-green-700 border-green-200', 'animate': true},
                 'SYNC': {'status': 'running', 'color': 'bg-green-100 text-green-700 border-green-200', 'animate': true},
                 'INTEGRATE': {'status': 'running', 'color': 'bg-green-100 text-green-700 border-green-200', 'animate': true},
                 'RESOLVE_PASS_1': {'status': 'running', 'color': 'bg-green-100 text-green-700 border-green-200', 'animate': true},

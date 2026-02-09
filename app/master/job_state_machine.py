@@ -6,7 +6,6 @@ import asyncio
 import logging
 import uuid
 import re
-import queue
 import os
 import shlex
 import json
@@ -24,12 +23,10 @@ class Stage(Enum):
     SYNC = "SYNC"
     INTEGRATE = "INTEGRATE"
     RESOLVE_PASS_1 = "RESOLVE_PASS_1"
-    RESOLVE_PASS_2 = "RESOLVE_PASS_2"  # Kept for backward compat, but skipped in flow
     RESOLVE_CHECK = "RESOLVE_CHECK"
     NEEDS_RESOLVE = "NEEDS_RESOLVE"
     PRE_SUBMIT = "PRE_SUBMIT"
     SHELVE = "SHELVE"
-    NC_FIX = "NC_FIX"
     P4PUSH = "P4PUSH"
     CLEANUP = "CLEANUP"  # Reverts opened files on failure before entering ERROR
     DONE = "DONE"
@@ -43,7 +40,6 @@ class JobStateMachine:
         self.jobs: Dict[str, dict] = {}  # job_id -> job_info
         self.cmd_to_job: Dict[str, str] = {}  # cmd_id -> job_id
         self.logs: Dict[str, List[dict]] = {}  # job_id -> [log_entries]
-        self.sse_clients: Dict[str, List[queue.Queue]] = {}  # job_id -> [queue]
         
         # Register as event handler
         self.agent_server.register_event_handler(self)
@@ -124,7 +120,6 @@ class JobStateMachine:
         })
         
         logger.info(f"Job {job_id}: {old_stage} -> {next_stage.value}")
-        self._emit_sse_event(job_id, "status_update", {"status": self.get_job_info(job_id)['status'] if self.get_job_info(job_id) else 'unknown', "stage": next_stage.value})
         
         # Handle special monitoring for NEEDS_RESOLVE
         if old_stage == Stage.NEEDS_RESOLVE.value and next_stage != Stage.NEEDS_RESOLVE:
@@ -974,9 +969,6 @@ echo "CHANGELIST:$cl"
         self.logs[job_id].append(entry)
         self._append_log_to_file(job_id, entry)
         
-        # Also emit SSE event for real-time updates
-        self._emit_sse_event(job_id, "log", {"stream": stream, "data": data})
-        
         logger.info(f"[Job {job_id}] {stream.upper()}: {data}")
 
     def _get_log_dir(self, job_id: str) -> str:
@@ -1076,13 +1068,10 @@ echo "CHANGELIST:$cl"
             
             # Add status field (same logic as get_job_info)
             stage = job.get('stage', 'INIT')
-            if stage in ['DONE', 'Pushed']: status = 'done'
+            if stage in ['DONE']: status = 'done'
             elif stage in ['ERROR']: status = 'error'
             elif stage in ['NEEDS_RESOLVE']: status = 'needs_resolve'
             elif stage in ['CLEANUP']: status = 'error'  # CLEANUP is a pre-error state
-            elif stage in ['BLOCKED']: status = 'blocked'
-            elif stage in ['AWAITING_APPROVAL']: status = 'awaiting_approval'
-            elif stage in ['READY_TO_SUBMIT']: status = 'ready_to_submit'
             else: status = 'running'
             job_with_logs["status"] = status
             
@@ -1107,13 +1096,10 @@ echo "CHANGELIST:$cl"
             return None
         
         stage = job.get('stage', 'INIT')
-        if stage in ['DONE', 'Pushed']: status = 'done'
+        if stage in ['DONE']: status = 'done'
         elif stage in ['ERROR']: status = 'error'
         elif stage in ['NEEDS_RESOLVE']: status = 'needs_resolve'
         elif stage in ['CLEANUP']: status = 'error'  # CLEANUP is a pre-error state
-        elif stage in ['BLOCKED']: status = 'blocked'
-        elif stage in ['AWAITING_APPROVAL']: status = 'awaiting_approval'
-        elif stage in ['READY_TO_SUBMIT']: status = 'ready_to_submit'
         else: status = 'running'
         
         return {
@@ -1129,34 +1115,8 @@ echo "CHANGELIST:$cl"
             'changelist': job.get('changelist'),  # Shelved changelist
             'source_changelist': job.get('source_changelist'),  # Source changelist for integrate
             'conflicts': job.get('conflicts', []),
-            'blocked_files': job.get('blocked_files', []),
             'pids': job.get('pids', {})
         }
-    
-    def register_sse_client(self, job_id: str, q: queue.Queue):
-        """Register SSE client for real-time updates"""
-        if job_id not in self.sse_clients:
-            self.sse_clients[job_id] = []
-        self.sse_clients[job_id].append(q)
-        logger.info(f"SSE client registered for job {job_id}")
-
-    def unregister_sse_client(self, job_id: str, q: queue.Queue):
-        """Unregister SSE client"""
-        if job_id in self.sse_clients:
-            self.sse_clients[job_id].remove(q)
-            if not self.sse_clients[job_id]:
-                del self.sse_clients[job_id]
-        logger.info(f"SSE client unregistered for job {job_id}")
-
-    def _emit_sse_event(self, job_id: str, event_type: str, data: dict):
-        """Emit event to SSE clients"""
-        if job_id in self.sse_clients:
-            message = {"type": event_type, "job_id": job_id, "data": data}
-            for q in self.sse_clients[job_id]:
-                try:
-                    q.put_nowait(message)
-                except queue.Full:
-                    pass # Client too slow, drop message
     
     async def cancel_job(self, job_id: str):
         """Cancel a running job"""
