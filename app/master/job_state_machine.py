@@ -24,13 +24,14 @@ class Stage(Enum):
     SYNC = "SYNC"
     INTEGRATE = "INTEGRATE"
     RESOLVE_PASS_1 = "RESOLVE_PASS_1"
-    RESOLVE_PASS_2 = "RESOLVE_PASS_2"
+    RESOLVE_PASS_2 = "RESOLVE_PASS_2"  # Kept for backward compat, but skipped in flow
     RESOLVE_CHECK = "RESOLVE_CHECK"
     NEEDS_RESOLVE = "NEEDS_RESOLVE"
     PRE_SUBMIT = "PRE_SUBMIT"
     SHELVE = "SHELVE"
     NC_FIX = "NC_FIX"
     P4PUSH = "P4PUSH"
+    CLEANUP = "CLEANUP"  # Reverts opened files on failure before entering ERROR
     DONE = "DONE"
     ERROR = "ERROR"
 
@@ -144,6 +145,21 @@ class JobStateMachine:
             logger.error(f"Job {job_id} failed")
             await self._shutdown_agent(job_id, "Job failed")
             self._release_workspace(job_id)
+            return
+        
+        if next_stage == Stage.CLEANUP:
+            logger.warning(f"Job {job_id} entering cleanup - reverting opened files")
+            self._add_log_entry(job_id, "stderr", 
+                "[CLEANUP] Job failed, reverting opened files in workspace...")
+            command = self._get_stage_command(job, next_stage)
+            if command:
+                await self._execute_command(job_id, command)
+            else:
+                # Cannot build cleanup command (e.g. missing P4 config), go to ERROR directly
+                logger.error(f"Job {job_id}: Cannot build cleanup command, going to ERROR directly")
+                self._add_log_entry(job_id, "stderr",
+                    "[CLEANUP] Warning: unable to build revert command, manual cleanup may be needed")
+                await self.transition_to(job_id, Stage.ERROR)
             return
 
         # Execute command for the new stage
@@ -376,11 +392,10 @@ echo "CHANGELIST:$cl"
             Stage.SYNC: f"cd {workspace} && source {init_script} && bootenv && p4w sync_all -bsc",
             Stage.INTEGRATE: integrate_cmd,
             Stage.RESOLVE_PASS_1: f"{p4_base} resolve -am",
-            Stage.RESOLVE_PASS_2: f"{p4_base} resolve -am",
             Stage.RESOLVE_CHECK: f"{p4_base} resolve -n",
             Stage.PRE_SUBMIT: spec.get('pre_submit_hook'),
             Stage.SHELVE: shelve_cmd,
-            # NC_FIX removed - name_check remediation is now handled inline in SHELVE command
+            Stage.CLEANUP: f"{p4_base} revert //...",
             Stage.P4PUSH: p4push_cmd
         }
         
@@ -513,6 +528,19 @@ echo "CHANGELIST:$cl"
             if job.get("current_cmd_id"):
                 error_msg = f"Agent connection lost during stage {current_stage}"
                 self._add_log_entry(job_id, "stderr", f"[CONNECTION ERROR] {error_msg}")
+                
+                # Warn about manual cleanup if files may be opened
+                needs_cleanup_stages = {
+                    Stage.INTEGRATE.value, Stage.RESOLVE_PASS_1.value,
+                    Stage.RESOLVE_CHECK.value, Stage.NEEDS_RESOLVE.value,
+                    Stage.PRE_SUBMIT.value, Stage.SHELVE.value
+                }
+                if current_stage in needs_cleanup_stages:
+                    p4_client = job.get("spec", {}).get("p4", {}).get("client", "unknown")
+                    self._add_log_entry(job_id, "stderr",
+                        f"[WARNING] Agent lost during stage with opened files. "
+                        f"Manual cleanup may be needed: p4 -c {p4_client} revert //...")
+                
                 job["error"] = error_msg
                 job["stage"] = Stage.ERROR.value
                 job["updated_at"] = datetime.now().isoformat()
@@ -522,6 +550,7 @@ echo "CHANGELIST:$cl"
                     "at": datetime.now().isoformat(),
                     "reason": "agent_disconnected"
                 })
+                self._release_workspace(job_id)
                 logger.error(f"Job {job_id} failed due to agent disconnection during active command")
 
     async def _handle_cmd_started(self, message: dict):
@@ -594,11 +623,34 @@ echo "CHANGELIST:$cl"
     async def _decide_next_stage(self, job_id: str, current_stage: Stage, exit_code: int) -> Optional[Stage]:
         """Determine next stage based on result"""
         
-        # Basic error handling
+        # Stages that need cleanup on failure (files have been opened by p4 integrate)
+        _NEEDS_CLEANUP_STAGES = {
+            Stage.INTEGRATE, Stage.RESOLVE_PASS_1,
+            Stage.RESOLVE_CHECK, Stage.NEEDS_RESOLVE,
+            Stage.PRE_SUBMIT, Stage.SHELVE
+        }
+        
+        # CLEANUP always goes to ERROR regardless of exit code
+        if current_stage == Stage.CLEANUP:
+            if exit_code == 0:
+                self._add_log_entry(job_id, "stdout", "[CLEANUP] Workspace cleaned successfully")
+            else:
+                self._add_log_entry(job_id, "stderr", 
+                    f"[CLEANUP] Warning: revert failed (exit code {exit_code}), manual cleanup may be needed")
+            return Stage.ERROR
+        
+        # Handle non-zero exit codes
         if exit_code != 0:
-            # Exceptions: Resolve pass 1/2 usually return 0 even if conflicts remain, 
-            # but if p4 fails (e.g. network), it returns non-zero.
-            # Strictly per doc:
+            # RESOLVE_CHECK special case: p4 resolve -n may return non-zero
+            # when there are no files to resolve (varies by P4 server version).
+            # Always analyze the output instead of failing immediately.
+            if current_stage == Stage.RESOLVE_CHECK:
+                logger.info(f"Job {job_id}: RESOLVE_CHECK exited with code {exit_code}, analyzing output")
+                return self._analyze_resolve_check(job_id)
+            
+            # For other stages, route to CLEANUP if files may be opened
+            if current_stage in _NEEDS_CLEANUP_STAGES:
+                return Stage.CLEANUP
             return Stage.ERROR
             
         # Success transitions
@@ -606,22 +658,26 @@ echo "CHANGELIST:$cl"
             Stage.GET_LATEST_CL: Stage.SYNC,  # After getting latest CL, go to SYNC
             Stage.SYNC: Stage.INTEGRATE,
             Stage.INTEGRATE: Stage.RESOLVE_PASS_1,
-            Stage.RESOLVE_PASS_1: Stage.RESOLVE_PASS_2,
-            Stage.RESOLVE_PASS_2: Stage.RESOLVE_CHECK,
+            Stage.RESOLVE_PASS_1: Stage.RESOLVE_CHECK,  # Skip redundant PASS_2, go straight to CHECK
             # RESOLVE_CHECK needs output analysis
             # PRE_SUBMIT needs output analysis (implied hook success if exit_code=0)
             Stage.PRE_SUBMIT: Stage.SHELVE,
             # SHELVE needs output analysis (name_check remediation is handled inline)
-            # NC_FIX removed - handled inline in SHELVE command
             Stage.P4PUSH: Stage.DONE
         }
         
+        # Stages that need output analysis
         if current_stage == Stage.GET_LATEST_CL:
             return self._analyze_get_latest_cl(job_id)
         elif current_stage == Stage.RESOLVE_CHECK:
             return self._analyze_resolve_check(job_id)
         elif current_stage == Stage.SHELVE:
             return self._analyze_shelve_output(job_id)
+        elif current_stage == Stage.INTEGRATE:
+            return self._analyze_integrate_output(job_id)
+        elif current_stage == Stage.RESOLVE_PASS_1:
+            self._log_resolve_summary(job_id)
+            return Stage.RESOLVE_CHECK
         
         return transitions.get(current_stage, Stage.ERROR)
 
@@ -649,20 +705,33 @@ echo "CHANGELIST:$cl"
             return Stage.ERROR
     
     def _analyze_resolve_check(self, job_id: str) -> Stage:
-        """Analyze 'p4 resolve -n' output"""
+        """Analyze 'p4 resolve -n' output.
+        
+        Uses CONSERVATIVE fallback: if output is unclear or unparseable,
+        assume conflicts exist rather than silently skipping them.
+        Checks BOTH stdout and stderr since P4 may output to either stream.
+        """
         job = self.jobs[job_id]
         current_cmd_id = job.get("current_cmd_id")
         
-        # Only analyze output from the current command (not historical logs)
-        output = "".join([
+        # Collect ALL output (stdout + stderr) from the current command
+        # P4 may output "No file(s) to resolve" to stderr in some versions
+        all_output = "".join([
             l["data"] + "\n" for l in self.logs[job_id] 
-            if l["stream"] == "stdout" and l.get("cmd_id") == current_cmd_id
+            if l.get("cmd_id") == current_cmd_id
         ])
         
-        # Parse conflict files from output
+        # Check for "No file(s) to resolve" in ALL output (stdout + stderr)
+        # This is the clearest signal that everything is resolved
+        if "No file(s) to resolve" in all_output:
+            job["conflicts"] = []
+            logger.info(f"Job {job_id}: No conflicts remaining, proceeding to PRE_SUBMIT")
+            return Stage.PRE_SUBMIT
+        
+        # Parse conflict files from all output
         # p4 resolve -n output format: "//depot/path/file.cpp - merging //from/path/file.cpp"
         conflicts = []
-        for line in output.split('\n'):
+        for line in all_output.split('\n'):
             line_lower = line.lower()
             if 'merging' in line_lower or 'resolve skipped' in line_lower:
                 # Extract file path (starts with //)
@@ -670,23 +739,102 @@ echo "CHANGELIST:$cl"
                 if match:
                     conflicts.append(match.group(1))
         
-        # Store conflicts in job for UI display
-        job["conflicts"] = conflicts
-        
-        # Check for "No file(s) to resolve" - means all resolved
-        if "No file(s) to resolve" in output:
-            job["conflicts"] = []
-            logger.info(f"Job {job_id}: No conflicts remaining, proceeding to PRE_SUBMIT")
-            return Stage.PRE_SUBMIT
-        
         # If we found conflicts, go to NEEDS_RESOLVE
         if conflicts:
-            logger.info(f"Job {job_id}: Found {len(conflicts)} conflicts: {conflicts[:5]}...")
+            job["conflicts"] = conflicts
+            logger.info(f"Job {job_id}: Found {len(conflicts)} unresolved files: {conflicts[:5]}...")
             return Stage.NEEDS_RESOLVE
-            
-        # Default fallback - if empty or unclear, assume resolved
-        job["conflicts"] = []
-        return Stage.PRE_SUBMIT
+        
+        # CONSERVATIVE fallback: if output is empty or unclear, assume conflicts
+        # may exist rather than silently skipping them. This prevents unresolved
+        # conflicts from being pushed to production.
+        output_preview = all_output.strip()[:500] if all_output.strip() else "(empty)"
+        logger.warning(f"Job {job_id}: p4 resolve -n output unclear, treating as unresolved. Output: {output_preview}")
+        self._add_log_entry(job_id, "stderr", 
+            "[WARNING] p4 resolve -n produced unclear output. Treating as unresolved for safety. "
+            "Please check manually and click Continue when resolved.")
+        job["conflicts"] = ["(unable to parse - manual check required)"]
+        return Stage.NEEDS_RESOLVE
+
+    def _analyze_integrate_output(self, job_id: str) -> Stage:
+        """Analyze 'p4 integrate' output to verify files were actually integrated.
+        
+        Detects cases like 'all revision(s) already integrated' where integrate
+        succeeds (exit code 0) but produces no files to resolve/shelve/push.
+        """
+        job = self.jobs[job_id]
+        current_cmd_id = job.get("current_cmd_id")
+        
+        # Collect all output (stdout + stderr)
+        all_output = "".join([
+            l["data"] + "\n" for l in self.logs[job_id]
+            if l.get("cmd_id") == current_cmd_id
+        ])
+        
+        # Check for "already integrated" - nothing to do
+        if "already integrated" in all_output.lower():
+            warning_msg = "[INTEGRATE] All revision(s) already integrated - nothing to do"
+            logger.warning(f"Job {job_id}: {warning_msg}")
+            self._add_log_entry(job_id, "stderr", warning_msg)
+            job["error"] = warning_msg
+            return Stage.ERROR
+        
+        # Check for "no such file" or empty integrate
+        if "no such file" in all_output.lower() or "no file(s) to integrate" in all_output.lower():
+            error_msg = "[INTEGRATE] No files found to integrate - check source/target paths"
+            logger.error(f"Job {job_id}: {error_msg}")
+            self._add_log_entry(job_id, "stderr", error_msg)
+            job["error"] = error_msg
+            return Stage.ERROR
+        
+        # Count integrated files for logging
+        integrated_count = 0
+        for line in all_output.split('\n'):
+            # p4 integrate output: "//depot/path/file.cpp#3 - integrate from //source/path/file.cpp#2,#3"
+            if '#' in line and ' - ' in line:
+                integrated_count += 1
+        
+        if integrated_count > 0:
+            self._add_log_entry(job_id, "stdout", f"[INTEGRATE] {integrated_count} file(s) scheduled for integration")
+            logger.info(f"Job {job_id}: Integrated {integrated_count} files")
+        else:
+            # Output exists but no recognizable integration lines - warn but continue
+            output_preview = all_output.strip()[:300] if all_output.strip() else "(empty)"
+            logger.warning(f"Job {job_id}: Could not parse integrate file count. Output: {output_preview}")
+        
+        return Stage.RESOLVE_PASS_1
+    
+    def _log_resolve_summary(self, job_id: str):
+        """Log a summary of what happened during RESOLVE_PASS_1 for visibility.
+        
+        Parses the resolve -am output to report how many files were auto-merged
+        and how many were skipped (have conflicts).
+        """
+        job = self.jobs[job_id]
+        current_cmd_id = job.get("current_cmd_id")
+        
+        # Collect all output (stdout + stderr)
+        all_output = "".join([
+            l["data"] + "\n" for l in self.logs[job_id]
+            if l.get("cmd_id") == current_cmd_id
+        ])
+        
+        auto_resolved = 0
+        skipped = 0
+        
+        for line in all_output.split('\n'):
+            line_lower = line.lower()
+            if 'merging' in line_lower and ('resolve' not in line_lower or 'skipped' not in line_lower):
+                auto_resolved += 1
+            elif 'resolve skipped' in line_lower or 'non-text' in line_lower:
+                skipped += 1
+        
+        summary = f"[RESOLVE] Auto-merge complete: {auto_resolved} file(s) resolved"
+        if skipped > 0:
+            summary += f", {skipped} file(s) skipped (need manual resolution)"
+        
+        self._add_log_entry(job_id, "stdout", summary)
+        logger.info(f"Job {job_id}: {summary}")
 
     def _analyze_shelve_output(self, job_id: str) -> Stage:
         """Analyze 'p4 shelve' output for changelist
@@ -722,33 +870,53 @@ echo "CHANGELIST:$cl"
         return Stage.P4PUSH
 
     def _start_conflict_monitor(self, job_id: str):
-        """Start background task to periodically check resolve status"""
+        """Start background task to periodically check if conflicts have been resolved.
+        
+        Runs 'p4 resolve -n' every 60 seconds. When it detects that all conflicts
+        have been resolved (user resolved them manually), it automatically transitions
+        the job to RESOLVE_CHECK for proper validation.
+        """
         if job_id in self.monitor_tasks:
             return
             
         async def monitor():
-            logger.info(f"Started conflict monitor for {job_id}")
-            while True:
-                await asyncio.sleep(30) # Check every 30s
-                if self.jobs[job_id]["stage"] != Stage.NEEDS_RESOLVE.value:
-                    break
-                
-                # Trigger a check
-                # We execute p4 resolve -n directly. 
-                # Note: We need a distinct command execution that doesn't mess up state flow.
-                # We can treat it as a side-command.
-                # For simplicity, let's just run it and analyze log separately?
-                # Or reuse _execute_command but mark it special?
-                
-                # Implementation detail: We just want to see if it's resolved.
-                # Let's run it, but we need to handle the result specially, not via main loop?
-                # Actually, we can use a special "NEEDS_RESOLVE_CHECK" stage temporarily or 
-                # simply handle the CMD_DONE for this specific background cmd.
-                
-                # FOR NOW: Keep it simple. User must click continue. 
-                # Automated check is nice but complex to interleave with main state machine 
-                # without a "Background Command" concept.
-                pass
+            logger.info(f"Started conflict monitor for job {job_id}")
+            check_interval = 60  # seconds between checks
+            
+            try:
+                while True:
+                    await asyncio.sleep(check_interval)
+                    
+                    # Check if job is still in NEEDS_RESOLVE
+                    job = self.jobs.get(job_id)
+                    if not job or job["stage"] != Stage.NEEDS_RESOLVE.value:
+                        logger.info(f"Conflict monitor for {job_id}: job no longer in NEEDS_RESOLVE, stopping")
+                        break
+                    
+                    # Check if agent is still connected
+                    agent_id = job.get("agent_id")
+                    if not agent_id or agent_id not in self.agent_server.agents:
+                        logger.warning(f"Conflict monitor for {job_id}: agent not connected, stopping")
+                        break
+                    
+                    try:
+                        # Schedule the resolve check as a SEPARATE task to avoid
+                        # cancellation issues: user_continue -> transition_to may call
+                        # _stop_conflict_monitor which cancels THIS task. By spawning
+                        # a separate task, the state transition won't be interrupted.
+                        logger.info(f"Conflict monitor for {job_id}: triggering resolve check")
+                        asyncio.create_task(self.user_continue(job_id))
+                        
+                        # Wait for the check to complete before next cycle
+                        await asyncio.sleep(10)
+                        
+                    except Exception as e:
+                        logger.error(f"Conflict monitor error for {job_id}: {e}")
+                        continue
+            except asyncio.CancelledError:
+                pass  # Normal shutdown via _stop_conflict_monitor
+            
+            logger.info(f"Conflict monitor stopped for job {job_id}")
                 
         self.monitor_tasks[job_id] = asyncio.create_task(monitor())
 
@@ -911,6 +1079,7 @@ echo "CHANGELIST:$cl"
             if stage in ['DONE', 'Pushed']: status = 'done'
             elif stage in ['ERROR']: status = 'error'
             elif stage in ['NEEDS_RESOLVE']: status = 'needs_resolve'
+            elif stage in ['CLEANUP']: status = 'error'  # CLEANUP is a pre-error state
             elif stage in ['BLOCKED']: status = 'blocked'
             elif stage in ['AWAITING_APPROVAL']: status = 'awaiting_approval'
             elif stage in ['READY_TO_SUBMIT']: status = 'ready_to_submit'
@@ -941,6 +1110,7 @@ echo "CHANGELIST:$cl"
         if stage in ['DONE', 'Pushed']: status = 'done'
         elif stage in ['ERROR']: status = 'error'
         elif stage in ['NEEDS_RESOLVE']: status = 'needs_resolve'
+        elif stage in ['CLEANUP']: status = 'error'  # CLEANUP is a pre-error state
         elif stage in ['BLOCKED']: status = 'blocked'
         elif stage in ['AWAITING_APPROVAL']: status = 'awaiting_approval'
         elif stage in ['READY_TO_SUBMIT']: status = 'ready_to_submit'
@@ -1012,7 +1182,17 @@ echo "CHANGELIST:$cl"
         else:
             logger.warning(f"Cannot kill job {job_id}: agent_id={agent_id}, cmd_id={current_cmd_id}, agent_connected={agent_id in self.agent_server.agents if agent_id else False}")
         
-        # Update job state
-        await self.transition_to(job_id, Stage.ERROR)
         job["error"] = "Cancelled by user"
+        
+        # Determine if cleanup is needed (files may be opened after INTEGRATE)
+        current_stage = job.get("stage", "INIT")
+        needs_cleanup_stages = {
+            Stage.INTEGRATE.value, Stage.RESOLVE_PASS_1.value,
+            Stage.RESOLVE_CHECK.value, Stage.NEEDS_RESOLVE.value,
+            Stage.PRE_SUBMIT.value, Stage.SHELVE.value
+        }
+        if current_stage in needs_cleanup_stages:
+            await self.transition_to(job_id, Stage.CLEANUP)
+        else:
+            await self.transition_to(job_id, Stage.ERROR)
 
