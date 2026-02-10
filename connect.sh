@@ -30,8 +30,15 @@ if [ "$CURRENT_HOST" = "$SERVER" ]; then
         exit 1
     fi
 
-    echo "  Running on server ($SERVER). Opening browser..."
-    firefox --new-tab "$URL" >/dev/null 2>&1 &
+    echo "  Running on server ($SERVER)."
+    # Try to open browser (non-blocking, ignore if no display)
+    if [ -n "$DISPLAY" ]; then
+        timeout 3 firefox --new-tab "$URL" >/dev/null 2>&1 &
+        echo "  Opening browser..."
+    else
+        echo "  No graphical display detected."
+        echo "  Please open this URL in your browser manually."
+    fi
 
 else
     # On a remote machine — need SSH tunnel
@@ -41,8 +48,11 @@ else
 
     # Check if tunnel is already running
     if ss -tlnp 2>/dev/null | grep -q ":$PORT " || lsof -i :$PORT >/dev/null 2>&1; then
-        echo "  Tunnel already active. Opening browser..."
-        firefox --new-tab "$URL" >/dev/null 2>&1 &
+        echo "  Tunnel already active."
+        if [ -n "$DISPLAY" ]; then
+            timeout 3 firefox --new-tab "$URL" >/dev/null 2>&1 &
+            echo "  Opening browser..."
+        fi
     else
         USER=$(whoami)
         echo "  (Enter your password if prompted)"
@@ -67,8 +77,10 @@ else
 
         echo ""
         echo "  SSH tunnel established."
-        echo "  Opening browser..."
-        firefox --new-tab "$URL" >/dev/null 2>&1 &
+        if [ -n "$DISPLAY" ]; then
+            timeout 3 firefox --new-tab "$URL" >/dev/null 2>&1 &
+            echo "  Opening browser..."
+        fi
         echo ""
         echo "  To disconnect later:"
         echo "    kill \$(lsof -t -i :$PORT) 2>/dev/null"
