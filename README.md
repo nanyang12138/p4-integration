@@ -12,10 +12,12 @@ A distributed Perforce integration service using Master-Agent architecture with 
 - **Master-Agent Architecture** - Distributed execution with central control
 - **Event-Driven State Machine** - Non-blocking, asynchronous job execution
 - **Auto-Deploy** - Master automatically deploys Agents via SSH
+- **Auto-Detect Master** - Hostname auto-detected on startup, no hardcoding needed
 - **Real-time Logs** - Live log streaming via TCP socket
 - **Template System** - Save and reuse job configurations (global & private)
-- **Scheduled Jobs** - Cron-based automated execution
+- **Scheduled Jobs** - Cron-based automated execution with stored credentials
 - **Smart Conflict Resolution** - Auto-merge with manual fallback
+- **P4 Login Validation** - Credentials validated against P4 server (without affecting tickets)
 - **Modern Web UI** - Clean, responsive interface with Tailwind CSS
 
 ## Architecture
@@ -32,9 +34,10 @@ A distributed Perforce integration service using Master-Agent architecture with 
 ```
 
 1. User creates a job via Web UI
-2. Master deploys `agent_core.py` to remote machine via SSH
+2. Master deploys `agent_core.py` to remote machine via SSH (Bootstrapper)
 3. Agent connects back to Master on TCP port 9090
 4. Master sends P4 commands, Agent executes and streams logs back
+5. On completion/failure/cancel, Agent is shut down and workspace is cleaned up
 
 ## Quick Start
 
@@ -53,7 +56,7 @@ pip install -r requirements.txt
 python wsgi.py
 ```
 
-Server starts on `http://0.0.0.0:5000`.
+Server starts on `http://0.0.0.0:5000`. The master hostname is auto-detected and saved to `data/master_host`.
 
 To run in the background (persists after closing terminal):
 
@@ -63,54 +66,57 @@ nohup python wsgi.py > /tmp/p4_integ_server.log 2>&1 &
 
 ### 3. Access the Web UI
 
-Open your browser and go to:
+If you are on the same machine as the server:
 
 ```
 http://<server-hostname>:5000
 ```
 
-For example: `http://atletx8-neu006:5000`
+Log in with your P4 username and password.
 
-Log in with your P4 username and password. Credentials are validated against the P4 server.
+## Quick Connect Script
+
+A `connect.sh` script is provided for easy access. It auto-detects whether you are on the server or a remote machine:
+
+```bash
+/path/to/p4-integration/connect.sh
+```
+
+- **On the server**: Opens Firefox directly to the Web UI
+- **On a remote machine**: Sets up an SSH tunnel and opens Firefox to `http://localhost:5000`
+
+The script reads the master hostname from `data/master_host` (written by `wsgi.py` on startup), so no hardcoded hostnames are needed.
 
 ## Sharing with Others
 
-### If direct access works (no firewall)
+### Option 1: Direct access (same machine)
 
-Share the URL with your colleagues:
-
-```
-http://<server-hostname>:5000
-```
-
-They log in with their own P4 credentials.
-
-### If blocked by firewall (most common)
-
-Each user runs SSH port forwarding from their own machine:
+If colleagues log into the same server, they just run:
 
 ```bash
-ssh -L 5000:localhost:5000 <username>@<server-hostname>
+/path/to/p4-integration/connect.sh
 ```
 
-For example:
+### Option 2: SSH tunnel (different machine)
+
+If colleagues are on a different machine, the `connect.sh` script automatically sets up an SSH tunnel. Alternatively, they can do it manually:
 
 ```bash
-ssh -L 5000:localhost:5000 zhangsan@atletx8-neu006
+ssh -f -N -L 5000:localhost:5000 <username>@<server-hostname>
 ```
 
-Then open `http://localhost:5000` in the browser. Keep the SSH session open while using the tool.
+Then open `http://localhost:5000` in the browser.
 
 **Tip**: Add this to `~/.ssh/config` for convenience:
 
 ```
 Host p4tool
-    HostName atletx8-neu006
+    HostName <server-hostname>
     User your_username
     LocalForward 5000 localhost:5000
 ```
 
-Then just run `ssh p4tool` and open `http://localhost:5000`.
+Then just `ssh p4tool` and open `http://localhost:5000`.
 
 ## Job Workflow
 
@@ -130,7 +136,7 @@ GET_LATEST_CL -> SYNC -> INTEGRATE -> RESOLVE_PASS_1 -> RESOLVE_CHECK
                                                  P4PUSH -> DONE
 
 On failure at any stage:   -> CLEANUP (p4 revert) -> ERROR
-On cancel:                 -> kill process -> CLEANUP -> ERROR
+On cancel:                 -> kill process group -> wait -> CLEANUP -> ERROR
 ```
 
 ### Stage Details
@@ -154,11 +160,11 @@ On cancel:                 -> kill process -> CLEANUP -> ERROR
 
 | Page | URL | Description |
 |------|-----|-------------|
-| Dashboard | `/admin` | View all jobs with status |
-| New Job | `/admin/submit` | Create integration job (with SSH config) |
+| Dashboard | `/admin` | View all jobs with running/completed/failed counts |
+| New Job | `/admin/submit` | Create integration job (SSH config included in form) |
 | Job Detail | `/jobs/<id>` | View logs, resolve conflicts, cancel/retry |
-| Templates | `/templates` | Save and reuse job configurations |
-| Schedules | `/schedules` | Cron-based automated job execution |
+| Templates | `/templates` | Save and reuse job configurations (global & private) |
+| Schedules | `/schedules` | Cron-based automated job execution with Run Now |
 | Settings | `/settings` | SSH/Agent connection defaults |
 
 ## API Reference
@@ -171,20 +177,24 @@ On cancel:                 -> kill process -> CLEANUP -> ERROR
 - `POST /api/jobs/<id>/continue` - Continue after manual resolve
 - `POST /api/jobs/<id>/cancel` - Cancel running job
 - `POST /api/jobs/<id>/retry` - Retry failed job
+- `GET /api/jobs/<id>/heartbeat` - Check agent connection health
+- `GET /api/jobs/<id>/process_status` - Get running process info
 
 ### Templates
 - `GET /api/templates` - List templates
 - `POST /api/templates` - Create template
-- `PUT /api/templates/<id>` - Update template
+- `PUT /api/templates/<id>` - Update template (supports type change: private/global)
 - `DELETE /api/templates/<id>` - Delete template
 - `POST /api/templates/<id>/run` - Run job from template
 
 ### Schedules
 - `GET /api/schedules` - List schedules
-- `POST /api/schedules` - Create schedule
+- `POST /api/schedules` - Create schedule (auto-saves P4 credentials)
 - `PUT /api/schedules/<id>` - Update schedule
 - `DELETE /api/schedules/<id>` - Delete schedule
-- `POST /api/schedules/<id>/run` - Run schedule immediately
+- `POST /api/schedules/<id>/run` - Run schedule immediately (returns job_id)
+- `POST /api/schedules/<id>/enable` - Enable schedule
+- `POST /api/schedules/<id>/disable` - Disable schedule
 
 ### Agents
 - `GET /api/agents` - List connected agents
@@ -196,13 +206,15 @@ Configuration is loaded from `config.yaml` (optional) and environment variables:
 
 | Setting | Env Variable | Default | Description |
 |---------|-------------|---------|-------------|
-| P4 Port | `P4PORT` | - | Perforce server address |
+| P4 Port | `P4PORT` | `atlvp4p01.amd.com:1677` | Perforce server address |
 | P4 User | `P4USER` | - | Perforce username |
 | Log Level | `LOG_LEVEL` | INFO | Logging level |
 | Data Dir | `P4_INTEG_DATA_DIR` | `./data` | Data storage directory |
 | Flask Secret | `FLASK_SECRET_KEY` | dev key | Session encryption key |
-| Server Host | `HOST` | 0.0.0.0 | Flask bind address |
+| Server Host | `FLASK_HOST` | 0.0.0.0 | Flask bind address |
 | Server Port | `PORT` | 5000 | Flask port |
+
+**Note**: Do not use the `HOST` env variable for Flask binding -- it conflicts with the system hostname on many Linux distributions. Use `FLASK_HOST` instead.
 
 ## Project Structure
 
@@ -210,26 +222,28 @@ Configuration is loaded from `config.yaml` (optional) and environment variables:
 p4-integration/
 ├── app/
 │   ├── agent/
-│   │   └── agent_core.py      # Remote agent (deployed via SSH)
+│   │   └── agent_core.py        # Remote agent (deployed via SSH)
 │   ├── master/
-│   │   ├── agent_server.py    # TCP server for agent connections
-│   │   ├── job_state_machine.py  # Core state machine logic
-│   │   ├── bootstrapper.py    # SSH agent deployment
-│   │   └── workspace_queue.py # Workspace concurrency control
+│   │   ├── agent_server.py      # TCP server for agent connections
+│   │   ├── job_state_machine.py # Core state machine logic
+│   │   ├── bootstrapper.py      # SSH agent deployment
+│   │   └── workspace_queue.py   # Workspace concurrency control
 │   ├── models/
-│   │   └── template.py        # Template management
+│   │   └── template.py          # Template management
 │   ├── scheduler/
-│   │   └── scheduler.py       # Cron-based scheduling
-│   ├── templates/             # HTML templates (Jinja2 + Tailwind)
-│   ├── api.py                 # REST API endpoints
-│   ├── server.py              # Flask UI routes
-│   ├── config.py              # Configuration loading
-│   └── __init__.py            # App factory
+│   │   └── scheduler.py         # Cron-based scheduling
+│   ├── templates/               # HTML templates (Jinja2 + Tailwind)
+│   ├── api.py                   # REST API endpoints
+│   ├── server.py                # Flask UI routes
+│   ├── config.py                # Configuration loading
+│   └── __init__.py              # App factory + job runner registration
 ├── data/
-│   ├── templates/             # Stored templates (global/private)
-│   └── logs/                  # Job logs
-├── wsgi.py                    # Entry point
-├── requirements.txt           # Python dependencies
+│   ├── master_host              # Auto-generated: current master hostname
+│   ├── templates/               # Stored templates (global/private)
+│   └── logs/                    # Job logs
+├── wsgi.py                      # Entry point
+├── connect.sh                   # Quick connect script for users
+├── requirements.txt             # Python dependencies
 └── README.md
 ```
 
@@ -239,7 +253,7 @@ p4-integration/
 
 1. Check that port 9090 is accessible from the remote machine:
    ```bash
-   ssh user@remote "nc -zv <master-ip> 9090"
+   ssh user@remote "nc -zv <master-hostname> 9090"
    ```
 
 2. Verify the agent process is running:
@@ -254,14 +268,23 @@ p4-integration/
 
 ### Cannot Access Web UI from Another Machine
 
-1. Verify the server is running on `0.0.0.0` (not `127.0.0.1`)
-2. Test port connectivity: `nc -zv <hostname> 5000`
-3. If blocked by firewall, use SSH port forwarding (see "Sharing with Others" above)
+1. Verify the server is running: `ps aux | grep wsgi.py`
+2. Check Flask is binding to `0.0.0.0` (not a specific hostname). If it shows `Running on http://<hostname>:5000` instead of `http://0.0.0.0:5000`, check that `FLASK_HOST` is not set, or unset the system `HOST` variable.
+3. Test port connectivity: `nc -zv <hostname> 5000`
+4. If blocked by firewall, use `connect.sh` or SSH port forwarding (see "Sharing with Others" above)
+5. When using SSH tunnel, make sure `data/master_host` exists (start `wsgi.py` first)
 
 ### P4 Login Issues
 
-- The tool validates P4 credentials on login without affecting your existing P4 tickets
-- If you get authentication errors, verify your password is correct: `p4 -p <P4PORT> -u <user> login -s`
+- The tool validates P4 credentials on login using `p4 login -p` (print-only, does not modify your P4 tickets)
+- If you get authentication errors, verify your password: `p4 -p <P4PORT> -u <user> login -s`
+- Default P4PORT is `atlvp4p01.amd.com:1677`, configurable via `P4PORT` env var or `config.yaml`
+
+### Cancel Not Working
+
+- Cancel kills the entire process group (shell + all child processes)
+- The job waits for the process to die before running cleanup (`p4 revert`)
+- If a job progresses past the stage you wanted to cancel, it means the stages completed before the cancel signal arrived
 
 ## License
 
