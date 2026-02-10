@@ -155,14 +155,14 @@
           <div>
             <label class="block text-xs font-medium text-purple-800 mb-1">SSH Host</label>
             <input type="text" name="ssh_host" id="ssh_host"
-                   value="{{ template.config.ssh.host if template and template.config.ssh else '' }}"
+                   value="{{ template.config.ssh.ssh_host if template and template.config.ssh else '' }}"
                    class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
                    placeholder="e.g. atletx8-neu22">
           </div>
           <div>
             <label class="block text-xs font-medium text-purple-800 mb-1">SSH Port</label>
             <input type="number" name="ssh_port" id="ssh_port"
-                   value="{{ template.config.ssh.port if template and template.config.ssh else 22 }}"
+                   value="{{ template.config.ssh.ssh_port if template and template.config.ssh else 22 }}"
                    class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm">
           </div>
         </div>
@@ -259,8 +259,8 @@ document.getElementById('templateForm').addEventListener('submit', async functio
     description: formData.get('description'),
     trial: formData.get('trial') === 'on',
     ssh: {
-      host: formData.get('ssh_host'),
-      port: parseInt(formData.get('ssh_port')) || 22,
+      ssh_host: formData.get('ssh_host'),
+      ssh_port: parseInt(formData.get('ssh_port')) || 22,
       master_host: formData.get('master_host'),
       master_port: parseInt(formData.get('master_port')) || 9090,
       python_path: formData.get('python_path') || 'python3'

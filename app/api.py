@@ -171,8 +171,8 @@ def run_template(template_id):
     
     # Get SSH config
     ssh_config = config.get('ssh', {})
-    ssh_host = ssh_config.get('host') or session.get('ssh_host')
-    ssh_port = ssh_config.get('port') or session.get('ssh_port', 22)
+    ssh_host = ssh_config.get('ssh_host') or session.get('ssh_host')
+    ssh_port = ssh_config.get('ssh_port') or session.get('ssh_port', 22)
     master_host = ssh_config.get('master_host') or session.get('master_host')
     master_port = ssh_config.get('master_port') or session.get('master_port', 9090)
     python_path = ssh_config.get('python_path') or session.get('python_path', 'python3')
