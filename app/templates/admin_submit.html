@@ -111,6 +111,44 @@
           </div>
         </div>
 
+        <!-- SSH/Agent Configuration (Collapsible) -->
+        <details id="sshConfigSection" class="bg-amber-50 border border-amber-200 rounded-lg overflow-hidden">
+          <summary class="px-4 py-3 cursor-pointer hover:bg-amber-100/50 transition-colors flex items-center gap-2 select-none">
+            <i class="fa-solid fa-chevron-right text-[10px] text-amber-600 transition-transform details-chevron"></i>
+            <i class="fa-solid fa-terminal text-amber-600 text-sm"></i>
+            <span class="text-sm font-semibold text-amber-900">SSH / Agent Connection</span>
+            <span id="sshConfigStatus" class="ml-auto text-xs text-amber-600"></span>
+          </summary>
+          <div class="px-4 pb-4 pt-2 space-y-4 border-t border-amber-200">
+            <p class="text-xs text-amber-700">Configure how to connect to the remote machine and how the Agent connects back.</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-medium text-amber-800 mb-1">SSH Host <span class="text-red-500">*</span></label>
+                <input type="text" name="ssh_host" id="ssh_host" value="{{ session.get('ssh_host', '') }}" class="block w-full px-3 py-1.5 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" placeholder="e.g. atletx8-neu006.amd.com" required>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-amber-800 mb-1">SSH Port</label>
+                <input type="number" name="ssh_port" id="ssh_port" value="{{ session.get('ssh_port', 22) }}" class="block w-full px-3 py-1.5 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" placeholder="22">
+              </div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-medium text-amber-800 mb-1">Master Host <span class="text-red-500">*</span></label>
+                <input type="text" name="master_host" id="master_host" value="{{ session.get('master_host', '') }}" class="block w-full px-3 py-1.5 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" placeholder="e.g. 10.67.190.37" required>
+                <p class="mt-1 text-[10px] text-amber-600">IP/hostname reachable from SSH host</p>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-amber-800 mb-1">Master Port</label>
+                <input type="number" name="master_port" id="master_port" value="{{ session.get('master_port', 9090) }}" class="block w-full px-3 py-1.5 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" placeholder="9090">
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-amber-800 mb-1">Remote Python Path</label>
+              <input type="text" name="python_path" id="python_path" value="{{ session.get('python_path', '/tool/pandora64/bin/python3.11') }}" class="block w-full px-3 py-1.5 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" placeholder="/tool/pandora64/bin/python3.11">
+            </div>
+          </div>
+        </details>
+
         <!-- Trial Mode -->
         <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
           <label class="flex items-center cursor-pointer">
@@ -185,30 +223,57 @@
   }
 
   // LocalStorage persistence for form fields
-  const fields = ['p4_port', 'p4_client', 'workspace'];
+  const fields = ['p4_port', 'p4_client', 'workspace', 'ssh_host', 'ssh_port', 'master_host', 'master_port', 'python_path'];
   const defaults = {
-    'p4_port': 'srdcp4ps1.amd.com:1677',
+    'p4_port': 'atlvp4p01.amd.com:1677',
     'p4_client': '',
-    'workspace': ''
+    'workspace': '',
+    'ssh_host': '',
+    'ssh_port': '22',
+    'master_host': '',
+    'master_port': '9090',
+    'python_path': '/tool/pandora64/bin/python3.11'
   };
   
   fields.forEach(function(field) {
     const input = document.getElementById(field);
     if (input) {
-      // Load from localStorage
-      const stored = localStorage.getItem('p4_integ_' + field);
-      if (stored) {
-        input.value = stored;
-      } else if (defaults[field]) {
-        input.value = defaults[field];
+      // Load from localStorage if input is empty or has no session value
+      if (!input.value || input.value === '' || input.value === 'None') {
+        const stored = localStorage.getItem('p4_integ_' + field);
+        if (stored) {
+          input.value = stored;
+        } else if (defaults[field]) {
+          input.value = defaults[field];
+        }
       }
       
       // Save to localStorage on change
       input.addEventListener('change', function() {
         localStorage.setItem('p4_integ_' + field, this.value);
+        updateSSHStatus();
       });
     }
   });
+
+  // SSH config status indicator & auto-open
+  function updateSSHStatus() {
+    const sshHost = document.getElementById('ssh_host');
+    const masterHost = document.getElementById('master_host');
+    const statusEl = document.getElementById('sshConfigStatus');
+    const section = document.getElementById('sshConfigSection');
+    if (!sshHost || !masterHost || !statusEl) return;
+    
+    const configured = sshHost.value.trim() && masterHost.value.trim();
+    statusEl.textContent = configured ? 'Configured' : 'Not configured';
+    statusEl.className = 'ml-auto text-xs ' + (configured ? 'text-green-600 font-medium' : 'text-red-500 font-medium');
+    
+    // Auto-open if not configured
+    if (!configured && section) {
+      section.open = true;
+    }
+  }
+  updateSSHStatus();
 
   // ========== Loading State for Form Submission ==========
   let isSubmitting = false;

@@ -90,17 +90,18 @@
             
             <!-- Desktop Navigation -->
             <div class="hidden md:flex items-center gap-1">
-              <a href="/admin" class="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 flex items-center gap-2">
-                <i class="fa-solid fa-table-columns text-slate-400"></i> Dashboard
+              {% set current_path = request.path %}
+              <a href="/admin" class="px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 {{ 'bg-primary-50 text-primary-700' if current_path == '/admin' or current_path == '/' else 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}">
+                <i class="fa-solid fa-table-columns {{ 'text-primary-500' if current_path == '/admin' or current_path == '/' else 'text-slate-400' }}"></i> Dashboard
               </a>
-              <a href="/templates" class="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 flex items-center gap-2">
-                <i class="fa-solid fa-file-code text-slate-400"></i> Templates
+              <a href="/templates" class="px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 {{ 'bg-primary-50 text-primary-700' if current_path.startswith('/templates') else 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}">
+                <i class="fa-solid fa-file-code {{ 'text-primary-500' if current_path.startswith('/templates') else 'text-slate-400' }}"></i> Templates
               </a>
-              <a href="/schedules" class="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 flex items-center gap-2">
-                <i class="fa-solid fa-clock text-slate-400"></i> Schedules
+              <a href="/schedules" class="px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 {{ 'bg-primary-50 text-primary-700' if current_path.startswith('/schedules') else 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}">
+                <i class="fa-solid fa-clock {{ 'text-primary-500' if current_path.startswith('/schedules') else 'text-slate-400' }}"></i> Schedules
               </a>
-              <a href="/settings" class="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all duration-200 flex items-center gap-2">
-                <i class="fa-solid fa-cog text-slate-400"></i> Settings
+              <a href="/settings" class="px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 {{ 'bg-primary-50 text-primary-700' if current_path == '/settings' else 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}">
+                <i class="fa-solid fa-cog {{ 'text-primary-500' if current_path == '/settings' else 'text-slate-400' }}"></i> Settings
               </a>
             </div>
           </div>

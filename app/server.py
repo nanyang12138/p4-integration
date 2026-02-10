@@ -170,25 +170,34 @@ def register_routes(app, state_machine):
                     action_text='Go Back to Form'
                 ), 400
 
-            # SSH/Agent configuration from session
-            ssh_host = session.get('ssh_host')
-            ssh_port = session.get('ssh_port', 22)
-            master_host = session.get('master_host')
-            master_port = session.get('master_port', 9090)
-            python_path = session.get('python_path', 'python3')
+            # SSH/Agent configuration from form (primary) or session (fallback)
+            ssh_host = request.form.get('ssh_host', '').strip() or session.get('ssh_host')
+            ssh_port = int(request.form.get('ssh_port') or session.get('ssh_port', 22) or 22)
+            master_host = request.form.get('master_host', '').strip() or session.get('master_host')
+            master_port = int(request.form.get('master_port') or session.get('master_port', 9090) or 9090)
+            python_path = request.form.get('python_path', '').strip() or session.get('python_path', 'python3')
+            
+            # Save to session for future use (so Settings page shows current values)
+            if ssh_host:
+                session['ssh_host'] = ssh_host
+            if master_host:
+                session['master_host'] = master_host
+            session['ssh_port'] = ssh_port
+            session['master_port'] = master_port
+            session['python_path'] = python_path
             
             if not ssh_host or not master_host:
                 return render_template('error.html',
                     error_type='warning',
-                    error_title='Settings Required',
-                    error_subtitle='SSH and Agent configuration is missing',
-                    error_message='Before submitting a job, you need to configure SSH Host and Master Host in the Settings page.',
+                    error_title='Connection Settings Required',
+                    error_subtitle='SSH Host and Master Host are required',
+                    error_message='Please expand the "SSH / Agent Connection" section in the job form and fill in SSH Host and Master Host.',
                     causes=[
-                        'SSH Host is not configured',
-                        'Master Host (Agent callback address) is not configured'
+                        'SSH Host is not configured — the remote machine where P4 commands run',
+                        'Master Host is not configured — the IP/hostname for Agent to connect back'
                     ],
-                    action_url='/settings',
-                    action_text='Go to Settings'
+                    action_url='/admin/submit',
+                    action_text='Go Back to Form'
                 ), 400
 
             spec = {

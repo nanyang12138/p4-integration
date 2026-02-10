@@ -14,6 +14,7 @@
     <div class="flex gap-4">
       {% set running_count = jobs | rejectattr('stage', 'in', ['DONE', 'ERROR']) | list | length %}
       {% set done_count = jobs | selectattr('stage', 'equalto', 'DONE') | list | length %}
+      {% set error_count = jobs | selectattr('stage', 'equalto', 'ERROR') | list | length %}
       
       <div class="bg-white px-4 py-2 rounded-lg shadow-sm border border-slate-200 flex items-center gap-3">
         <div class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
@@ -30,6 +31,16 @@
           <div class="text-lg font-bold text-slate-900">{{ done_count }}</div>
         </div>
       </div>
+      
+      {% if error_count > 0 %}
+      <div class="bg-white px-4 py-2 rounded-lg shadow-sm border border-red-200 flex items-center gap-3">
+        <div class="w-2 h-2 rounded-full bg-red-500"></div>
+        <div>
+          <div class="text-xs text-red-500 font-medium uppercase tracking-wider">Failed</div>
+          <div class="text-lg font-bold text-red-600">{{ error_count }}</div>
+        </div>
+      </div>
+      {% endif %}
     </div>
   </div>
 

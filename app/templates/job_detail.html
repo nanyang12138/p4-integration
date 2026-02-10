@@ -270,7 +270,7 @@
           <span class="text-xs text-slate-400">Auto-refreshing</span>
         </div>
       </div>
-      <div class="bg-slate-900 p-4 overflow-x-auto h-96 overflow-y-auto" id="log-container">
+      <div class="bg-slate-900 p-4 overflow-x-auto min-h-48 max-h-[70vh] overflow-y-auto" id="log-container">
         <pre class="font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed" id="log-output">{% for line in job.log %}{{ line }}
 {% endfor %}</pre>
       </div>
@@ -388,8 +388,8 @@
   function generateCommands(useWildcard) {
     fetch('/api/jobs/' + jobId).then(r => r.json()).then(function(job){
       if(!job || !job.conflicts || !job.conflicts.length){ alert('No conflicts found'); return; }
-      var wsRoot = '{{ job.workspace_root or "/local_vol1_nobackup/nanyang/orion" }}';
-      var client = '{{ job.client or "nanyang2_srdc_srdcws990_mkwa_local_vol1_nobackup_nanyang_orion" }}';
+      var wsRoot = '{{ job.spec.workspace if job.spec else "" }}';
+      var client = '{{ job.spec.p4.client if job.spec and job.spec.p4 else "" }}';
       var commands = ['cd ' + wsRoot];
       if(useWildcard) commands.push('p4 -c ' + client + ' resolve ...');
       else job.conflicts.forEach(f => commands.push('p4 -c ' + client + ' resolve ' + f));
