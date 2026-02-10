@@ -621,15 +621,15 @@ def retry_job(job_id):
         if not spec:
             return jsonify({"error": "Original job has no spec"}), 400
         
-        # Get SSH/Agent config from request body or session
+        # Get SSH/Agent config: request body > original job spec > session
         data = request.json if request.is_json else {}
+        orig_conn = spec.get("connection", {})
         
-        # Try request body first, then fall back to session
-        ssh_host = data.get("ssh_host") or session.get('ssh_host')
-        ssh_port = data.get("ssh_port") or session.get('ssh_port', 22)
-        master_host = data.get("master_host") or session.get('master_host')
-        master_port = data.get("master_port") or session.get('master_port', 9090)
-        python_path = data.get("python_path") or session.get('python_path', 'python3')
+        ssh_host = data.get("ssh_host") or orig_conn.get("ssh_host") or session.get('ssh_host')
+        ssh_port = data.get("ssh_port") or orig_conn.get("ssh_port") or session.get('ssh_port', 22)
+        master_host = data.get("master_host") or orig_conn.get("master_host") or session.get('master_host')
+        master_port = data.get("master_port") or orig_conn.get("master_port") or session.get('master_port', 9090)
+        python_path = data.get("python_path") or orig_conn.get("python_path") or session.get('python_path', 'python3')
         
         # Get P4 credentials from session (required for SSH auth)
         p4_user = session.get('p4_user')
