@@ -8,9 +8,23 @@ set +H  # Disable bash history expansion (! in passwords)
 # On the server: opens browser directly
 # On other machines: sets up SSH tunnel, then opens browser
 
-SERVER="atletx8-neu006"
 PORT=5000
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+MASTER_FILE="$SCRIPT_DIR/data/master_host"
 CURRENT_HOST=$(hostname | cut -d. -f1)
+
+# Read master hostname from file (written by wsgi.py on startup)
+if [ ! -f "$MASTER_FILE" ]; then
+    echo ""
+    echo "  [ERROR] Server not started yet."
+    echo "  Please start the server first on the target machine:"
+    echo "    cd $SCRIPT_DIR"
+    echo "    source venv/bin/activate"
+    echo "    python wsgi.py"
+    echo ""
+    exit 1
+fi
+SERVER=$(cat "$MASTER_FILE")
 
 echo ""
 echo "  P4 Integration Tool"
@@ -48,22 +62,17 @@ else
     else
         USER=$(whoami)
         echo "  Setting up SSH tunnel to $SERVER..."
+        echo "  (Enter your password if prompted)"
         echo ""
 
-        # Start SSH in background using nohup, let user type password interactively
-        ssh -N \
+        # -f: authenticate in foreground, then fork to background
+        ssh -f -N \
             -L $PORT:localhost:$PORT \
             -o ExitOnForwardFailure=yes \
             -o ServerAliveInterval=60 \
-            "$USER@$SERVER" &
-        SSH_PID=$!
+            "$USER@$SERVER"
 
-        # Wait for tunnel to establish (give time for password entry)
-        echo ""
-        echo "  Waiting for tunnel to establish..."
-        sleep 3
-
-        if ! kill -0 $SSH_PID 2>/dev/null; then
+        if [ $? -ne 0 ]; then
             echo "  [ERROR] SSH connection failed."
             echo ""
             echo "  Make sure you can SSH to $SERVER:"
@@ -72,11 +81,12 @@ else
             exit 1
         fi
 
-        echo "  SSH tunnel established (PID: $SSH_PID)."
+        echo ""
+        echo "  SSH tunnel established."
         open_browser "$URL"
         echo ""
         echo "  To disconnect later:"
-        echo "    kill $SSH_PID"
+        echo "    kill \`lsof -t -i :$PORT\` 2>/dev/null"
     fi
 fi
 

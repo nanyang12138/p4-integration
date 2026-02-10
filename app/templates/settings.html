@@ -69,7 +69,7 @@
             <div>
               <label class="block text-xs font-medium text-teal-800 mb-1">Master Host <span class="text-red-500">*</span></label>
               <input type="text" name="master_host" id="master_host" 
-                     value="{{ session.get('master_host', '') }}"
+                     value="{{ session.get('master_host', '') or master_host }}"
                      class="block w-full px-3 py-2 border border-teal-300 rounded-md focus:ring-teal-500 focus:border-teal-500 text-sm bg-white" 
                      placeholder="e.g. 10.67.190.37" required>
               <p class="mt-1 text-xs text-teal-600">IP/hostname reachable from the SSH host.</p>

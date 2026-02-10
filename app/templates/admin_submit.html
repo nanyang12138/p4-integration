@@ -134,7 +134,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label class="block text-xs font-medium text-amber-800 mb-1">Master Host <span class="text-red-500">*</span></label>
-                <input type="text" name="master_host" id="master_host" value="{{ session.get('master_host', '') }}" class="block w-full px-3 py-1.5 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" placeholder="e.g. 10.67.190.37" required>
+                <input type="text" name="master_host" id="master_host" value="{{ session.get('master_host', '') or master_host }}" class="block w-full px-3 py-1.5 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" placeholder="e.g. 10.67.190.37" required>
                 <p class="mt-1 text-[10px] text-amber-600">IP/hostname reachable from SSH host</p>
               </div>
               <div>

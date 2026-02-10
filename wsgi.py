@@ -1,5 +1,6 @@
 import os
 import sys
+import socket
 
 # Ensure this workspace path is first on sys.path so our local 'app' package is used
 _ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -9,6 +10,17 @@ if _ROOT not in sys.path:
 from app import create_app
 
 app = create_app()
+
+# Save current hostname so connect.sh and templates can auto-detect the master
+master_host = socket.gethostname()
+app.config["MASTER_HOST"] = master_host
+try:
+    master_host_file = os.path.join(app.config.get("DATA_DIR", "data"), "master_host")
+    os.makedirs(os.path.dirname(master_host_file), exist_ok=True)
+    with open(master_host_file, "w") as f:
+        f.write(master_host)
+except Exception:
+    pass
 
 if __name__ == "__main__":
     debug_env = os.environ.get("DEBUG") or os.environ.get("FLASK_DEBUG")

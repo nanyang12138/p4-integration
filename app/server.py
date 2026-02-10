@@ -64,6 +64,11 @@ def _validate_p4_credentials(p4_user: str, p4_password: str) -> tuple:
 
 def register_routes(app, state_machine):
     
+    @app.context_processor
+    def inject_master_host():
+        """Make master_host available to all templates."""
+        return {"master_host": app.config.get("MASTER_HOST", "")}
+    
     @app.route('/login', methods=['GET', 'POST'])
     def login():
         if request.method == 'POST':

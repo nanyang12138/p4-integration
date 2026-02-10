@@ -171,7 +171,7 @@
           <div>
             <label class="block text-xs font-medium text-purple-800 mb-1">Master Host (callback)</label>
             <input type="text" name="master_host" id="master_host"
-                   value="{{ template.config.ssh.master_host if template and template.config.ssh else '' }}"
+                   value="{{ template.config.ssh.master_host if template and template.config.ssh else master_host }}"
                    class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
                    placeholder="IP or hostname of this server">
           </div>
