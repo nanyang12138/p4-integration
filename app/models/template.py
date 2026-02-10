@@ -201,14 +201,29 @@ class TemplateManager:
             logger.warning(f"User {username} cannot update template {template_id} owned by {template.get('owner')}")
             return None
         
+        # Check if type is changing (private <-> global) — need to move file
+        old_type = template.get('type', 'private')
+        new_type = updates.get('type', old_type)
+        type_changed = old_type != new_type
+        
+        # Get old file path before applying updates
+        if type_changed:
+            if old_type == 'global':
+                old_filepath = os.path.join(self.global_templates_dir, f"{template_id}.yaml")
+            else:
+                user_dir = self._get_user_templates_dir(template.get('owner', username))
+                old_filepath = os.path.join(user_dir, f"{template_id}.yaml")
+        
         # Apply updates
         if 'name' in updates:
             template['name'] = updates['name']
         if 'config' in updates:
             template['config'] = updates['config']
+        if 'type' in updates:
+            template['type'] = updates['type']
         template['updated_at'] = datetime.now().isoformat()
         
-        # Determine save location (centralized storage)
+        # Determine save location based on (potentially new) type
         if template.get('type') == 'global':
             filepath = os.path.join(self.global_templates_dir, f"{template_id}.yaml")
         else:
@@ -216,6 +231,13 @@ class TemplateManager:
             filepath = os.path.join(user_dir, f"{template_id}.yaml")
         
         if self._save_template_file(filepath, template):
+            # If type changed, delete the old file from the previous location
+            if type_changed:
+                try:
+                    os.remove(old_filepath)
+                    logger.info(f"Template {template_id} moved from {old_type} to {new_type}")
+                except OSError as e:
+                    logger.warning(f"Failed to remove old template file {old_filepath}: {e}")
             logger.info(f"Updated template {template_id}")
             return template
         return None

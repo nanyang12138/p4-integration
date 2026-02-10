@@ -104,6 +104,8 @@ def update_template(template_id):
         updates['name'] = data['name']
     if 'config' in data:
         updates['config'] = data['config']
+    if 'type' in data:
+        updates['type'] = data['type']
     
     # Private templates now use centralized storage, no workspace needed
     template = template_manager.update_template(template_id, updates, username=username)
