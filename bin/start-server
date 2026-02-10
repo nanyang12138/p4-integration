@@ -1,0 +1,70 @@
+#!/bin/bash
+# Start P4 Integration Server
+#
+# Usage: /proj/gfx_gct_lec_user0/nanyang2/p4-integration/bin/start-server
+#
+# Starts the Flask server in the background using gunicorn (or falls back to wsgi.py).
+
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+PROJECT_DIR=$(dirname "$SCRIPT_DIR")
+VENV="$PROJECT_DIR/venv"
+LOG_FILE="/tmp/p4_integ_server.log"
+
+echo ""
+echo "  P4 Integration Server"
+echo "  ====================="
+echo ""
+
+# Check if already running
+if lsof -i :5000 >/dev/null 2>&1 || ss -tlnp 2>/dev/null | grep -q ":5000 "; then
+    echo "  Server is already running on port 5000."
+    echo "  To restart: $0 restart"
+    echo ""
+    exit 0
+fi
+
+# Handle restart
+if [ "$1" = "restart" ]; then
+    echo "  Stopping existing server..."
+    kill `lsof -t -i :5000` 2>/dev/null
+    sleep 2
+fi
+
+# Activate venv
+if [ -f "$VENV/bin/activate" ]; then
+    source "$VENV/bin/activate"
+else
+    echo "  [ERROR] Virtual environment not found at $VENV"
+    echo "  Run: python3 -m venv $VENV && pip install -r $PROJECT_DIR/requirements.txt"
+    exit 1
+fi
+
+cd "$PROJECT_DIR"
+
+# Try gunicorn first, fall back to wsgi.py
+if command -v gunicorn >/dev/null 2>&1; then
+    echo "  Starting with gunicorn (production mode)..."
+    nohup gunicorn -w 1 --threads 4 -b 0.0.0.0:5000 wsgi:app > "$LOG_FILE" 2>&1 &
+else
+    echo "  Starting with Flask dev server (install gunicorn for production)..."
+    nohup python wsgi.py > "$LOG_FILE" 2>&1 &
+fi
+
+PID=$!
+sleep 2
+
+if kill -0 $PID 2>/dev/null; then
+    HOSTNAME=$(hostname | cut -d. -f1)
+    echo "  Server started (PID: $PID)"
+    echo "  Log: $LOG_FILE"
+    echo ""
+    echo "  URL: http://$HOSTNAME:5000"
+    echo ""
+    echo "  To stop:    kill $PID"
+    echo "  To restart: $0 restart"
+    echo ""
+else
+    echo "  [ERROR] Server failed to start. Check log:"
+    echo "    tail -20 $LOG_FILE"
+    exit 1
+fi
