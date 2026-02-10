@@ -84,14 +84,19 @@ class ScheduleManager:
         except Exception as e:
             logger.error(f"Failed to save schedules to {filepath}: {e}")
     
-    def _execute_schedule(self, schedule_id: str):
-        """Execute a scheduled job."""
+    def _execute_schedule(self, schedule_id: str, force: bool = False):
+        """Execute a scheduled job.
+        
+        Args:
+            schedule_id: ID of the schedule to execute
+            force: If True, execute even if disabled (used by Run Now)
+        """
         schedule = self._schedules.get(schedule_id)
         if not schedule:
             logger.warning(f"Schedule {schedule_id} not found, skipping execution")
             return
         
-        if not schedule.get('enabled', True):
+        if not force and not schedule.get('enabled', True):
             logger.info(f"Schedule {schedule_id} is disabled, skipping")
             return
         
@@ -101,14 +106,16 @@ class ScheduleManager:
         schedule['last_run'] = datetime.now().isoformat()
         schedule['last_status'] = 'running'
         
+        job_id = None
         try:
             if self._job_runner:
-                self._job_runner(
+                job_id = self._job_runner(
                     schedule_id,
                     schedule.get('template_id'),
                     schedule.get('config', {})
                 )
                 schedule['last_status'] = 'success'
+                schedule['last_job_id'] = job_id
             else:
                 logger.error("No job runner configured")
                 schedule['last_status'] = 'failed'
@@ -341,15 +348,19 @@ class ScheduleManager:
         """Disable a schedule."""
         return self.update_schedule(schedule_id, {'enabled': False}) is not None
     
-    def run_now(self, schedule_id: str) -> bool:
-        """Run a schedule immediately (manual trigger)."""
+    def run_now(self, schedule_id: str) -> Optional[str]:
+        """Run a schedule immediately (manual trigger).
+        
+        Returns:
+            job_id if successful, None if schedule not found or execution failed.
+        """
         schedule = self._schedules.get(schedule_id)
         if not schedule:
-            return False
+            return None
         
         logger.info(f"Manual run triggered for schedule {schedule_id}")
-        self._execute_schedule(schedule_id)
-        return True
+        self._execute_schedule(schedule_id, force=True)
+        return schedule.get('last_job_id')
 
 
 # Global instance

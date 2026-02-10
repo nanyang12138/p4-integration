@@ -270,6 +270,10 @@ def create_schedule():
     if not username:
         return jsonify({"error": "Not logged in"}), 401
     
+    p4_password = session.get('p4_password')
+    if not p4_password:
+        return jsonify({"error": "Not logged in"}), 401
+    
     name = data.get('name')
     template_id = data.get('template_id')
     cron = data.get('cron')
@@ -291,6 +295,10 @@ def create_schedule():
     workspace = template.get('config', {}).get('workspace', '')
     if not workspace:
         return jsonify({"error": "Template has no workspace configured"}), 400
+    
+    # Store P4 credentials in schedule config for automated execution
+    config['p4_user'] = username
+    config['p4_password'] = p4_password
     
     schedule = scheduler_manager.create_schedule(
         name=name,
@@ -341,6 +349,8 @@ def update_schedule(schedule_id):
     if schedule.get('owner') != username:
         return jsonify({"error": "Permission denied"}), 403
     
+    p4_password = session.get('p4_password')
+    
     updates = {}
     if 'name' in data:
         updates['name'] = data['name']
@@ -350,6 +360,13 @@ def update_schedule(schedule_id):
         updates['config'] = data['config']
     if 'enabled' in data:
         updates['enabled'] = data['enabled']
+    
+    # Refresh P4 credentials in config on every update
+    if p4_password:
+        if 'config' not in updates:
+            updates['config'] = schedule.get('config', {})
+        updates['config']['p4_user'] = username
+        updates['config']['p4_password'] = p4_password
     
     result = scheduler_manager.update_schedule(schedule_id, updates)
     if result:
@@ -396,7 +413,8 @@ def disable_schedule(schedule_id):
 def run_schedule_now(schedule_id):
     """Run a schedule immediately (manual trigger)."""
     username = session.get('p4_user')
-    if not username:
+    p4_password = session.get('p4_password')
+    if not username or not p4_password:
         return jsonify({"error": "Not logged in"}), 401
     
     # Check ownership
@@ -406,9 +424,18 @@ def run_schedule_now(schedule_id):
     if schedule.get('owner') != username:
         return jsonify({"error": "Permission denied"}), 403
     
-    if scheduler_manager.run_now(schedule_id):
-        return jsonify({"status": "triggered"})
-    return jsonify({"error": "Failed to trigger schedule"}), 400
+    # Refresh credentials from current session before running
+    config = schedule.get('config', {})
+    config['p4_user'] = username
+    config['p4_password'] = p4_password
+    
+    job_id = scheduler_manager.run_now(schedule_id)
+    if job_id:
+        return jsonify({"status": "triggered", "job_id": job_id})
+    
+    # Check if there was an error
+    last_error = schedule.get('last_error')
+    return jsonify({"error": last_error or "Failed to trigger schedule"}), 400
 
 
 # ============= Workspace Queue API =============

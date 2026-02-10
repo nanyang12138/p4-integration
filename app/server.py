@@ -34,7 +34,7 @@ def _validate_p4_credentials(p4_user: str, p4_password: str) -> tuple:
     
     try:
         result = subprocess.run(
-            [p4_bin, "-p", p4_port, "-u", p4_user, "login"],
+            [p4_bin, "-p", p4_port, "-u", p4_user, "login", "-p"],
             input=(p4_password + "\n").encode(),
             capture_output=True,
             timeout=10

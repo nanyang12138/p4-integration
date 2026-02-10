@@ -119,18 +119,29 @@
 async function runNow(scheduleId) {
   if (!confirm('Run this schedule now?')) return;
   
+  // Disable the button to prevent double clicks
+  event.target.disabled = true;
+  event.target.innerHTML = '<i class="fa-solid fa-circle-notch animate-spin text-xs"></i>';
+  
   try {
     const response = await fetch(`/api/schedules/${scheduleId}/run`, {method: 'POST'});
     const data = await response.json();
     
-    if (response.ok) {
+    if (response.ok && data.job_id) {
+      showToast('Job started! Redirecting...');
+      window.location.href = `/jobs/${data.job_id}`;
+    } else if (response.ok) {
       showToast('Schedule triggered successfully');
       setTimeout(() => location.reload(), 1000);
     } else {
       alert('Failed: ' + (data.error || 'Unknown error'));
+      event.target.disabled = false;
+      event.target.innerHTML = '<i class="fa-solid fa-play text-xs"></i>';
     }
   } catch (err) {
     alert('Error: ' + err.message);
+    event.target.disabled = false;
+    event.target.innerHTML = '<i class="fa-solid fa-play text-xs"></i>';
   }
 }
 
