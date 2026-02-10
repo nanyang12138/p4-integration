@@ -22,6 +22,8 @@ class ScheduleManager:
     """Manages scheduled jobs using APScheduler.
     
     Schedules are stored per-workspace in {workspace}/.p4_integ/schedules.json
+    A registry file (data/schedule_workspaces.json) tracks which workspaces have schedules
+    so they can be reloaded on startup.
     """
     
     def __init__(self):
@@ -36,6 +38,11 @@ class ScheduleManager:
         self._schedules: Dict[str, dict] = {}  # schedule_id -> schedule_data
         self._job_runner: Optional[Callable] = None
         self._started = False
+        self._data_dir: Optional[str] = None  # Set by set_data_dir()
+    
+    def set_data_dir(self, data_dir: str):
+        """Set the data directory for the workspace registry file."""
+        self._data_dir = data_dir
     
     def set_job_runner(self, runner: Callable[[str, str, dict], None]):
         """Set the callback for running scheduled jobs.
@@ -197,6 +204,9 @@ class ScheduleManager:
         if enabled:
             self._add_to_scheduler(schedule_id, cron)
         
+        # Register workspace so schedules can be reloaded on restart
+        self._register_workspace(workspace)
+        
         logger.info(f"Created schedule {schedule_id}: {name} (cron: {cron})")
         return schedule
     
@@ -259,7 +269,77 @@ class ScheduleManager:
             if schedule.get('enabled', True):
                 self._add_to_scheduler(schedule_id, schedule['cron'])
         
-        logger.info(f"Loaded {len(schedules)} schedules from workspace {workspace}")
+        if schedules:
+            logger.info(f"Loaded {len(schedules)} schedules from workspace {workspace}")
+    
+    def _get_registry_file(self) -> Optional[str]:
+        """Get path to the workspace registry file."""
+        if not self._data_dir:
+            return None
+        return os.path.join(self._data_dir, "schedule_workspaces.json")
+    
+    def _load_registry(self) -> List[str]:
+        """Load the list of workspaces that have schedules."""
+        filepath = self._get_registry_file()
+        if not filepath:
+            return []
+        try:
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.error(f"Failed to load workspace registry: {e}")
+        return []
+    
+    def _save_registry(self, workspaces: List[str]):
+        """Save the list of workspaces that have schedules."""
+        filepath = self._get_registry_file()
+        if not filepath:
+            return
+        try:
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(workspaces, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save workspace registry: {e}")
+    
+    def _register_workspace(self, workspace: str):
+        """Add a workspace to the registry (if not already there)."""
+        workspaces = self._load_registry()
+        if workspace not in workspaces:
+            workspaces.append(workspace)
+            self._save_registry(workspaces)
+    
+    def _unregister_workspace(self, workspace: str):
+        """Remove a workspace from the registry if it has no more schedules."""
+        # Check if workspace still has any schedules
+        has_schedules = any(
+            s.get('workspace') == workspace for s in self._schedules.values()
+        )
+        if not has_schedules:
+            workspaces = self._load_registry()
+            if workspace in workspaces:
+                workspaces.remove(workspace)
+                self._save_registry(workspaces)
+    
+    def load_all_schedules(self):
+        """Load schedules from all registered workspaces. Called on startup."""
+        workspaces = self._load_registry()
+        total = 0
+        for workspace in workspaces:
+            try:
+                schedules = self._load_schedules(workspace)
+                for schedule_id, schedule in schedules.items():
+                    self._schedules[schedule_id] = schedule
+                    if schedule.get('enabled', True):
+                        self._add_to_scheduler(schedule_id, schedule['cron'])
+                total += len(schedules)
+            except Exception as e:
+                logger.error(f"Failed to load schedules from {workspace}: {e}")
+        
+        if total > 0:
+            logger.info(f"Loaded {total} schedules from {len(workspaces)} workspace(s)")
     
     def update_schedule(
         self,
@@ -336,6 +416,10 @@ class ScheduleManager:
             if schedule_id in schedules:
                 del schedules[schedule_id]
                 self._save_schedules(workspace, schedules)
+        
+        # Unregister workspace if no more schedules remain
+        if workspace:
+            self._unregister_workspace(workspace)
         
         logger.info(f"Deleted schedule {schedule_id}")
         return True

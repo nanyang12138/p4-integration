@@ -1,3 +1,10 @@
+"""
+WSGI Entry Point for P4 Integration Service.
+
+Usage:
+  Development:  python wsgi.py
+  Production:   gunicorn -w 1 --threads 4 -b 0.0.0.0:5000 wsgi:app
+"""
 import os
 import sys
 import socket

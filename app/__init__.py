@@ -81,8 +81,10 @@ def create_app() -> "Flask":
         server_thread = threading.Thread(target=run_agent_server, daemon=True)
         server_thread.start()
         
-        # Start the scheduler and register job runner
+        # Start the scheduler, set data dir, load saved schedules, register job runner
+        scheduler_manager.set_data_dir(data_dir)
         scheduler_manager.start()
+        scheduler_manager.load_all_schedules()
         
         def _schedule_job_runner(schedule_id: str, template_id: str, config: dict):
             """Execute a scheduled job by running its template.

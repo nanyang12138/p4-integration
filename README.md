@@ -52,16 +52,24 @@ pip install -r requirements.txt
 
 ### 2. Start the Server
 
+**Development** (simple, single-threaded):
+
 ```bash
 python wsgi.py
 ```
 
-Server starts on `http://0.0.0.0:5000`. The master hostname is auto-detected and saved to `data/master_host`.
+**Production** (recommended for multi-user, more stable):
+
+```bash
+gunicorn -w 1 --threads 4 -b 0.0.0.0:5000 wsgi:app
+```
+
+Server starts on `http://0.0.0.0:5000`. The master hostname is auto-detected and saved to `data/master_host`. Saved schedules are automatically reloaded on startup.
 
 To run in the background (persists after closing terminal):
 
 ```bash
-nohup python wsgi.py > /tmp/p4_integ_server.log 2>&1 &
+nohup gunicorn -w 1 --threads 4 -b 0.0.0.0:5000 wsgi:app > /tmp/p4_integ_server.log 2>&1 &
 ```
 
 ### 3. Access the Web UI
