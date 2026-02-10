@@ -41,12 +41,14 @@ fi
 
 cd "$PROJECT_DIR"
 
-# Try gunicorn first, fall back to wsgi.py
-if command -v gunicorn >/dev/null 2>&1; then
+# Use gunicorn from venv (not system), fall back to wsgi.py
+GUNICORN="$VENV/bin/gunicorn"
+if [ -x "$GUNICORN" ]; then
     echo "  Starting with gunicorn (production mode)..."
-    nohup gunicorn -w 1 --threads 4 -b 0.0.0.0:5000 wsgi:app > "$LOG_FILE" 2>&1 &
+    nohup "$GUNICORN" -w 1 --threads 4 -b 0.0.0.0:5000 wsgi:app > "$LOG_FILE" 2>&1 &
 else
-    echo "  Starting with Flask dev server (install gunicorn for production)..."
+    echo "  Starting with Flask dev server..."
+    echo "  (Install gunicorn for production: pip install gunicorn)"
     nohup python wsgi.py > "$LOG_FILE" 2>&1 &
 fi
 
