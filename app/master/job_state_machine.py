@@ -599,6 +599,18 @@ echo "CHANGELIST:$cl"
         
         logger.info(f"Command {cmd_id} finished: code={exit_code}, job={job_id}, stage={current_stage.value}")
         
+        # Check if this job was cancelled — route to CLEANUP/ERROR instead of normal flow
+        if job.get("cancelled"):
+            job["cancelled"] = False  # Clear flag so CLEANUP CMD_DONE flows normally
+            logger.info(f"Job {job_id} was cancelled, routing to cleanup/error")
+            current_stage_val = job.get("stage", "INIT")
+            if current_stage_val in _NEEDS_CLEANUP_STAGE_VALUES:
+                self._add_log_entry(job_id, "stderr", "[CANCEL] Command killed, cleaning up workspace...")
+                await self.transition_to(job_id, Stage.CLEANUP)
+            else:
+                await self.transition_to(job_id, Stage.ERROR)
+            return
+        
         # Log agent errors and non-zero exit codes to user-visible log
         if exit_code != 0:
             if agent_error:
@@ -1117,35 +1129,50 @@ echo "CHANGELIST:$cl"
         }
     
     async def cancel_job(self, job_id: str):
-        """Cancel a running job"""
+        """Cancel a running job.
+        
+        If a command is running, sends KILL_CMD and sets a 'cancelled' flag.
+        The actual transition to CLEANUP/ERROR happens when CMD_DONE arrives
+        (in _handle_cmd_done), ensuring only one command runs at a time.
+        
+        If no command is running (e.g. NEEDS_RESOLVE), transitions immediately.
+        """
         job = self.jobs.get(job_id)
         if not job:
             raise ValueError(f"Job {job_id} not found")
         
-        # Send kill command to agent if connected
+        job["error"] = "Cancelled by user"
+        self._add_log_entry(job_id, "stderr", "[CANCEL] Job cancelled by user")
+        
         agent_id = job.get("agent_id")
         current_cmd_id = job.get("current_cmd_id")
         
         if agent_id and agent_id in self.agent_server.agents and current_cmd_id:
+            # Command is running: kill it and wait for CMD_DONE to trigger cleanup
             try:
                 logger.info(f"Sending KILL_CMD to agent {agent_id} for cmd {current_cmd_id}")
                 await self.agent_server.send_to_agent(agent_id, {
-                    "type": "KILL_CMD",  # Changed from CANCEL_CMD to KILL_CMD
+                    "type": "KILL_CMD",
                     "cmd_id": current_cmd_id,
-                    "signal": 15  # SIGTERM
+                    "signal": 15  # SIGTERM (kills entire process group on agent)
                 })
-                logger.info(f"Kill signal sent successfully for job {job_id}")
+                # Set flag — _handle_cmd_done will check this and route to CLEANUP/ERROR
+                job["cancelled"] = True
+                logger.info(f"Kill signal sent for job {job_id}, waiting for CMD_DONE")
             except Exception as e:
                 logger.error(f"Failed to send kill to agent: {e}")
+                # Kill failed, transition immediately as fallback
+                current_stage = job.get("stage", "INIT")
+                if current_stage in _NEEDS_CLEANUP_STAGE_VALUES:
+                    await self.transition_to(job_id, Stage.CLEANUP)
+                else:
+                    await self.transition_to(job_id, Stage.ERROR)
         else:
-            logger.warning(f"Cannot kill job {job_id}: agent_id={agent_id}, cmd_id={current_cmd_id}, agent_connected={agent_id in self.agent_server.agents if agent_id else False}")
-        
-        job["error"] = "Cancelled by user"
-        
-        # Determine if cleanup is needed (files may be opened after INTEGRATE)
-        current_stage = job.get("stage", "INIT")
-        if current_stage in _NEEDS_CLEANUP_STAGE_VALUES:
-            await self.transition_to(job_id, Stage.CLEANUP)
-        else:
-            await self.transition_to(job_id, Stage.ERROR)
+            # No command running (e.g. NEEDS_RESOLVE state), transition immediately
+            logger.info(f"No active command for job {job_id}, transitioning directly")
+            current_stage = job.get("stage", "INIT")
+            if current_stage in _NEEDS_CLEANUP_STAGE_VALUES:
+                await self.transition_to(job_id, Stage.CLEANUP)
+            else:
+                await self.transition_to(job_id, Stage.ERROR)
 

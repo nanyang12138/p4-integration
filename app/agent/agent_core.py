@@ -120,13 +120,15 @@ class P4Agent:
         logging.info(f"Executing cmd_id={cmd_id} in cwd={cwd}: {command}")
         
         try:
-            # Create subprocess
+            # Create subprocess with its own process group so we can kill
+            # the entire group (shell + all child processes) on cancel
             process = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
-                env=env
+                env=env,
+                start_new_session=True
             )
             
             self.running_commands[cmd_id] = process
@@ -183,31 +185,43 @@ class P4Agent:
             })
     
     async def handle_kill_cmd(self, data: dict):
-        """Kill a running command"""
+        """Kill a running command and all its child processes"""
         cmd_id = data["cmd_id"]
         signal_num = data.get("signal", 15)  # SIGTERM
         
         if cmd_id in self.running_commands:
+            process = self.running_commands[cmd_id]
             try:
-                process = self.running_commands[cmd_id]
-                process.send_signal(signal_num)
-                logging.info(f"Sent signal {signal_num} to cmd_id={cmd_id}")
+                # Kill the entire process group (shell + all children)
+                os.killpg(process.pid, signal_num)
+                logging.info(f"Sent signal {signal_num} to process group {process.pid} for cmd_id={cmd_id}")
+            except ProcessLookupError:
+                logging.info(f"Process group {process.pid} already exited for cmd_id={cmd_id}")
             except Exception as e:
-                logging.error(f"Failed to kill cmd_id={cmd_id}: {e}")
+                logging.error(f"Failed to kill process group for cmd_id={cmd_id}: {e}")
+                # Fallback: try killing just the main process
+                try:
+                    process.terminate()
+                except Exception:
+                    pass
     
     async def cleanup_processes(self):
-        """Terminate all running subprocesses to prevent zombie processes"""
+        """Terminate all running subprocesses and their children to prevent zombie processes"""
         if not self.running_commands:
             return
         logging.info(f"Cleaning up {len(self.running_commands)} running process(es)")
         for cmd_id, process in list(self.running_commands.items()):
             try:
-                process.terminate()
-                logging.info(f"Terminated process for cmd_id={cmd_id} (pid={process.pid})")
+                os.killpg(process.pid, 15)  # SIGTERM to entire process group
+                logging.info(f"Terminated process group for cmd_id={cmd_id} (pid={process.pid})")
             except ProcessLookupError:
-                logging.info(f"Process for cmd_id={cmd_id} already exited")
+                logging.info(f"Process group for cmd_id={cmd_id} already exited")
             except Exception as e:
-                logging.warning(f"Failed to terminate process for cmd_id={cmd_id}: {e}")
+                logging.warning(f"Failed to kill process group for cmd_id={cmd_id}: {e}")
+                try:
+                    process.terminate()
+                except Exception:
+                    pass
         self.running_commands.clear()
 
     async def heartbeat_loop(self):
