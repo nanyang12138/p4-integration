@@ -10,24 +10,6 @@ from app import create_app
 
 app = create_app()
 
-# Debug: print which server module is loaded and list key routes
-try:
-    import importlib
-    srv = importlib.import_module("app.server")
-    print("Loaded app.server from:", getattr(srv, "__file__", "<unknown>"))
-    # Print a few routes to help diagnose 404 issues
-    interesting = ["/admin/jobs/<job_id>/check_log_json", "/admin/jobs/<job_id>/check_log", "/admin/jobs/<job_id>/rescan", "/api/jobs/<job_id>/rescan"]
-    have = []
-    for r in app.url_map.iter_rules():
-        if any(str(r).startswith(p.split("<job_id>")[0]) for p in interesting):
-            have.append(f"{r} -> {sorted(list(r.methods)) if r.methods else []}")
-    if have:
-        print("Routes:")
-        for line in have:
-            print(" ", line)
-except Exception as _:
-    pass
-
 if __name__ == "__main__":
     debug_env = os.environ.get("DEBUG") or os.environ.get("FLASK_DEBUG")
     debug = bool(int(debug_env)) if isinstance(debug_env, str) and debug_env.isdigit() else bool(debug_env)
