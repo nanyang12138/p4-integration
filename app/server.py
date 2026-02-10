@@ -44,12 +44,24 @@ def _validate_p4_credentials(p4_user: str, p4_password: str) -> tuple:
             current_app.logger.info(f"P4 login validation succeeded for user {p4_user}")
             return (True, None)
         else:
-            # Parse P4 error from stderr
+            # Parse P4 error — show a clean message to user, log full details
             stderr = result.stderr.decode("utf-8", errors="replace").strip()
-            # Common P4 errors: "Password invalid.", "User xxx doesn't exist"
-            error_msg = stderr if stderr else "Authentication failed"
-            current_app.logger.warning(f"P4 login validation failed for user {p4_user}: {error_msg}")
-            return (False, error_msg)
+            current_app.logger.warning(f"P4 login validation failed for user {p4_user}: {stderr}")
+            
+            # Map common P4 errors to user-friendly messages
+            stderr_lower = stderr.lower()
+            if "password invalid" in stderr_lower or "invalid credentials" in stderr_lower:
+                user_msg = "Password incorrect. Please check your AMD password."
+            elif "doesn't exist" in stderr_lower or "does not exist" in stderr_lower:
+                user_msg = f"User '{p4_user}' not found on P4 server."
+            elif "connect to server failed" in stderr_lower or "connection refused" in stderr_lower:
+                user_msg = "Cannot connect to P4 server. Please try again later."
+            else:
+                # Unknown error — show first meaningful line only
+                first_line = stderr.split('\n')[0][:100] if stderr else "Authentication failed"
+                user_msg = first_line
+            
+            return (False, user_msg)
             
     except FileNotFoundError:
         current_app.logger.error(f"P4 binary not found at {p4_bin}")
