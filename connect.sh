@@ -52,7 +52,7 @@ else
 
         # Start SSH in background using nohup, let user type password interactively
         ssh -N \
-            -L $PORT:$SERVER:$PORT \
+            -L $PORT:localhost:$PORT \
             -o ExitOnForwardFailure=yes \
             -o ServerAliveInterval=60 \
             "$USER@$SERVER" &

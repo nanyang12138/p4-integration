@@ -13,7 +13,7 @@ app = create_app()
 if __name__ == "__main__":
     debug_env = os.environ.get("DEBUG") or os.environ.get("FLASK_DEBUG")
     debug = bool(int(debug_env)) if isinstance(debug_env, str) and debug_env.isdigit() else bool(debug_env)
-    host = os.environ.get("HOST", "0.0.0.0")
+    host = os.environ.get("FLASK_HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "5000"))
 
     # Optional TLS support:
