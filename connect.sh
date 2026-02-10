@@ -9,7 +9,7 @@
 SERVER="atletx8-neu006"
 PORT=5000
 URL="http://localhost:$PORT"
-CURRENT_HOST=$(hostname -s)
+CURRENT_HOST=$(hostname | cut -d. -f1)
 
 echo ""
 echo "  P4 Integration Tool"
