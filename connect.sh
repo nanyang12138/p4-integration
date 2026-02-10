@@ -18,7 +18,8 @@ echo ""
 open_browser() {
     local url="$1"
     if [ -n "$DISPLAY" ]; then
-        timeout 3 firefox --new-tab "$url" >/dev/null 2>&1 &
+        firefox --new-tab "$url" >/dev/null 2>&1 &
+        disown
         echo "  Opening browser..."
     else
         echo "  No graphical display detected."
