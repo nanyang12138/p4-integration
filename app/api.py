@@ -202,6 +202,15 @@ def run_template(template_id):
         if not found_agent:
             return jsonify({"error": "Agent failed to connect"}), 504
         
+        # Normalize connection info in spec with consistent keys
+        spec["connection"] = {
+            "ssh_host": ssh_host,
+            "ssh_port": ssh_port,
+            "master_host": master_host,
+            "master_port": master_port,
+            "python_path": python_path
+        }
+        
         job_id = str(uuid.uuid4())
         state_machine.create_job(job_id, found_agent, spec, owner=username)
         
