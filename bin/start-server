@@ -15,19 +15,41 @@ echo "  P4 Integration Server"
 echo "  ====================="
 echo ""
 
-# Check if already running
-if lsof -i :5000 >/dev/null 2>&1 || ss -tlnp 2>/dev/null | grep -q ":5000 "; then
+port_in_use() {
+    lsof -i :5000 >/dev/null 2>&1 || ss -tlnp 2>/dev/null | grep -q ":5000 "
+}
+
+kill_server() {
+    local pids
+    pids=$(lsof -t -i :5000 2>/dev/null)
+    if [ -n "$pids" ]; then
+        echo "  Stopping existing server (PID: $pids)..."
+        kill $pids 2>/dev/null
+        local waited=0
+        while port_in_use && [ $waited -lt 8 ]; do
+            sleep 1
+            waited=$((waited + 1))
+        done
+        if port_in_use; then
+            echo "  Graceful stop failed, forcing..."
+            kill -9 $pids 2>/dev/null
+            sleep 1
+        fi
+    fi
+}
+
+# Handle restart: kill first, then fall through to start
+if [ "$1" = "restart" ]; then
+    if port_in_use; then
+        kill_server
+    else
+        echo "  (No server running, starting fresh...)"
+    fi
+elif port_in_use; then
     echo "  Server is already running on port 5000."
     echo "  To restart: $0 restart"
     echo ""
     exit 0
-fi
-
-# Handle restart
-if [ "$1" = "restart" ]; then
-    echo "  Stopping existing server..."
-    kill `lsof -t -i :5000` 2>/dev/null
-    sleep 2
 fi
 
 # Activate venv
