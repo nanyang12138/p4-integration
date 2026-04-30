@@ -23,11 +23,11 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label class="block text-xs font-medium text-blue-800 mb-1">P4 Port</label>
-              <input type="text" name="p4_port" id="p4_port" class="block w-full px-3 py-1.5 border border-blue-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="e.g. srdcp4ps1.amd.com:1677" required>
+              <input type="text" name="p4_port" id="p4_port" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm" placeholder="e.g. srdcp4ps1.amd.com:1677" required>
             </div>
             <div>
               <label class="block text-xs font-medium text-blue-800 mb-1">P4 Client</label>
-              <input type="text" name="p4_client" id="p4_client" class="block w-full px-3 py-1.5 border border-blue-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm" placeholder="e.g. user_workspace_name" required>
+              <input type="text" name="p4_client" id="p4_client" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm" placeholder="e.g. user_workspace_name" required>
             </div>
           </div>
         </div>
@@ -112,47 +112,47 @@
         </div>
 
         <!-- SSH/Agent Configuration (Collapsible) -->
-        <details id="sshConfigSection" class="bg-amber-50 border border-amber-200 rounded-lg overflow-hidden">
-          <summary class="px-4 py-3 cursor-pointer hover:bg-amber-100/50 transition-colors flex items-center gap-2 select-none">
-            <i class="fa-solid fa-chevron-right text-[10px] text-amber-600 transition-transform details-chevron"></i>
-            <i class="fa-solid fa-terminal text-amber-600 text-sm"></i>
-            <span class="text-sm font-semibold text-amber-900">SSH / Agent Connection</span>
-            <span id="sshConfigStatus" class="ml-auto text-xs text-amber-600"></span>
+        <details id="sshConfigSection" class="bg-blue-50 border border-blue-200 rounded-lg overflow-hidden">
+          <summary class="px-4 py-3 cursor-pointer hover:bg-blue-100/50 transition-colors flex items-center gap-2 select-none">
+            <i class="fa-solid fa-chevron-right text-[10px] text-blue-600 transition-transform details-chevron"></i>
+            <i class="fa-solid fa-terminal text-blue-600 text-sm"></i>
+            <span class="text-sm font-semibold text-blue-900">SSH / Agent Connection</span>
+            <span id="sshConfigStatus" class="ml-auto text-xs text-blue-600"></span>
           </summary>
-          <div class="px-4 pb-4 pt-2 space-y-4 border-t border-amber-200">
-            <p class="text-xs text-amber-700">Configure how to connect to the remote machine and how the Agent connects back.</p>
+          <div class="px-4 pb-4 pt-2 space-y-4 border-t border-blue-200">
+            <p class="text-xs text-blue-700">Configure how to connect to the remote machine and how the Agent connects back.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs font-medium text-amber-800 mb-1">SSH Host <span class="text-red-500">*</span></label>
-                <input type="text" name="ssh_host" id="ssh_host" value="{{ session.get('ssh_host', '') }}" class="block w-full px-3 py-1.5 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" placeholder="e.g. atletx8-neu006.amd.com" required>
+                <label class="block text-xs font-medium text-blue-800 mb-1">SSH Host <span class="text-red-500">*</span></label>
+                <input type="text" name="ssh_host" id="ssh_host" value="{{ session.get('ssh_host', '') }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="e.g. atletx8-neu006.amd.com" required>
               </div>
               <div>
-                <label class="block text-xs font-medium text-amber-800 mb-1">SSH Port</label>
-                <input type="number" name="ssh_port" id="ssh_port" value="{{ session.get('ssh_port', 22) }}" class="block w-full px-3 py-1.5 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" placeholder="22">
+                <label class="block text-xs font-medium text-blue-800 mb-1">SSH Port</label>
+                <input type="number" name="ssh_port" id="ssh_port" value="{{ session.get('ssh_port', 22) }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="22">
               </div>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs font-medium text-amber-800 mb-1">Master Host <span class="text-red-500">*</span></label>
-                <input type="text" name="master_host" id="master_host" value="{{ session.get('master_host', '') or master_host }}" class="block w-full px-3 py-1.5 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" placeholder="e.g. 10.67.190.37" required>
-                <p class="mt-1 text-[10px] text-amber-600">IP/hostname reachable from SSH host</p>
+                <label class="block text-xs font-medium text-blue-800 mb-1">Master Host <span class="text-red-500">*</span></label>
+                <input type="text" name="master_host" id="master_host" value="{{ session.get('master_host', '') or master_host }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="e.g. 10.67.190.37" required>
+                <p class="mt-1 text-[10px] text-blue-600">IP/hostname reachable from SSH host</p>
               </div>
               <div>
-                <label class="block text-xs font-medium text-amber-800 mb-1">Master Port</label>
-                <input type="number" name="master_port" id="master_port" value="{{ session.get('master_port', 9090) }}" class="block w-full px-3 py-1.5 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" placeholder="9090">
+                <label class="block text-xs font-medium text-blue-800 mb-1">Master Port</label>
+                <input type="number" name="master_port" id="master_port" value="{{ session.get('master_port', 9090) }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="9090">
               </div>
             </div>
             <div>
-              <label class="block text-xs font-medium text-amber-800 mb-1">Remote Python Path</label>
-              <input type="text" name="python_path" id="python_path" value="{{ session.get('python_path', '/tool/pandora64/bin/python3.11') }}" class="block w-full px-3 py-1.5 border border-amber-300 rounded-md focus:ring-amber-500 focus:border-amber-500 text-sm bg-white" placeholder="/tool/pandora64/bin/python3.11">
+              <label class="block text-xs font-medium text-blue-800 mb-1">Remote Python Path</label>
+              <input type="text" name="python_path" id="python_path" value="{{ session.get('python_path', '/tool/pandora64/bin/python3.11') }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="/tool/pandora64/bin/python3.11">
             </div>
           </div>
         </details>
 
         <!-- Trial Mode -->
-        <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <label class="flex items-center cursor-pointer">
-            <input type="checkbox" name="trial" value="true" class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-slate-300 rounded">
+            <input type="checkbox" name="trial" value="true" class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-slate-300 rounded">
             <span class="ml-3 flex flex-col">
               <span class="text-sm font-medium text-slate-900">Trial Run Mode</span>
               <span class="text-xs text-slate-500">Test the integration without actually pushing to server (p4push -trial)</span>

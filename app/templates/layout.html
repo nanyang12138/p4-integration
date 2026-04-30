@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en" class="h-full bg-gray-50">
+<html lang="en" class="h-full">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>P4 Integration Admin</title>
+    <title>P4 Integration</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
@@ -24,124 +24,199 @@
     </script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-      
-      /* Custom scrollbar for cleaner look */
-      ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-      .glass {
-        background: rgba(255, 255, 255, 0.85);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border-bottom: 1px solid rgba(226, 232, 240, 0.6);
-      }
-      
+      /* Custom scrollbar */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+      /* Content area scrollbar (lighter) */
+      .content-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; }
+      .content-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
       /* Card hover effect */
       .hover-card {
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       }
       .hover-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 8px 20px -4px rgba(0,0,0,0.1), 0 4px 8px -4px rgba(0,0,0,0.06);
       }
 
-      /* Subtle pattern background */
-      body {
+      /* Grid background for content area */
+      .content-bg {
         background-color: #f8fafc;
-        background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
-        background-size: 24px 24px;
+        background-image:
+          linear-gradient(rgba(226,232,240,0.45) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(226,232,240,0.45) 1px, transparent 1px);
+        background-size: 32px 32px;
       }
-      
+
       /* Animations */
       @keyframes spin { to { transform: rotate(360deg); } }
       .animate-spin-custom { animation: spin 1s linear infinite; }
-      
+
       /* Details chevron rotation */
       details[open] .details-chevron { transform: rotate(90deg); }
       details summary::-webkit-details-marker { display: none; }
       details summary { list-style: none; }
-      
+
       /* Toast notification */
       .toast {
         position: fixed; bottom: 24px; right: 24px;
-        padding: 12px 24px; background: #1e293b; color: white;
-        border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+        padding: 12px 20px; background: #1e293b; color: white;
+        border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2);
         transform: translateY(150%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         z-index: 50;
       }
       .toast.show { transform: translateY(0); }
+
+      /* Sidebar nav item */
+      .nav-item {
+        display: flex; align-items: center; gap: 10px;
+        padding: 7px 12px; border-radius: 8px;
+        font-size: 13.5px; font-weight: 500;
+        color: #94a3b8;
+        transition: all 0.15s ease;
+        border-left: 2px solid transparent;
+        text-decoration: none;
+      }
+      .nav-item:hover {
+        background: rgba(255,255,255,0.07);
+        color: #e2e8f0;
+      }
+      .nav-item.active {
+        background: rgba(255,255,255,0.1);
+        color: #ffffff;
+        border-left-color: #60a5fa;
+      }
+      .nav-item .nav-icon {
+        width: 16px; text-align: center; flex-shrink: 0;
+        font-size: 13px;
+      }
+
+      /* Agent status ring */
+      #agent-status-dot.bg-green-500 {
+        box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.25);
+      }
+
+      /* Unified info box token */
+      :root {
+        --info-bg: #eff6ff;
+        --info-border: #bfdbfe;
+      }
     </style>
   </head>
-  <body class="h-full text-slate-800 antialiased font-sans selection:bg-primary-100 selection:text-primary-900">
-    
-    <!-- Navbar -->
-    <nav class="fixed top-0 w-full z-40 glass transition-all duration-300" id="navbar">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center h-16">
-          <div class="flex items-center gap-8 flex-shrink-0">
-            <a href="/admin" class="flex items-center gap-2 group flex-shrink-0">
-              <div class="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-lg flex items-center justify-center shadow-lg shadow-primary-500/30 group-hover:scale-105 transition-transform duration-200">
-                <i class="fa-solid fa-code-branch text-white text-sm"></i>
-              </div>
-              <span class="font-bold text-xl tracking-tight text-slate-900 group-hover:text-primary-600 transition-colors hidden sm:inline-block">P4 Integration</span>
-            </a>
-            
-            <!-- Desktop Navigation -->
-            <div class="hidden md:flex items-center gap-1">
-              {% set current_path = request.path %}
-              <a href="/admin" class="px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 {{ 'bg-primary-50 text-primary-700' if current_path == '/admin' or current_path == '/' else 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}">
-                <i class="fa-solid fa-table-columns {{ 'text-primary-500' if current_path == '/admin' or current_path == '/' else 'text-slate-400' }}"></i> Dashboard
-              </a>
-              <a href="/templates" class="px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 {{ 'bg-primary-50 text-primary-700' if current_path.startswith('/templates') else 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}">
-                <i class="fa-solid fa-file-code {{ 'text-primary-500' if current_path.startswith('/templates') else 'text-slate-400' }}"></i> Templates
-              </a>
-              <a href="/schedules" class="px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 {{ 'bg-primary-50 text-primary-700' if current_path.startswith('/schedules') else 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}">
-                <i class="fa-solid fa-clock {{ 'text-primary-500' if current_path.startswith('/schedules') else 'text-slate-400' }}"></i> Schedules
-              </a>
-              <a href="/settings" class="px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 {{ 'bg-primary-50 text-primary-700' if current_path == '/settings' else 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}">
-                <i class="fa-solid fa-cog {{ 'text-primary-500' if current_path == '/settings' else 'text-slate-400' }}"></i> Settings
-              </a>
-            </div>
+  <body class="h-full font-sans antialiased text-slate-800 selection:bg-primary-100 selection:text-primary-900">
+    <div class="flex h-full">
+
+      <!-- ═══════════════════════════════════════ -->
+      <!--  SIDEBAR                                -->
+      <!-- ═══════════════════════════════════════ -->
+      <aside class="hidden md:flex w-56 flex-shrink-0 flex-col bg-slate-900 h-full overflow-hidden">
+
+        <!-- Logo -->
+        <div class="flex items-center gap-2.5 h-14 px-4 border-b border-slate-800 flex-shrink-0">
+          <div class="w-7 h-7 bg-gradient-to-br from-indigo-400 via-blue-500 to-cyan-400 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
+            <i class="fa-solid fa-code-branch text-white text-xs"></i>
           </div>
+          <span class="font-semibold text-white text-sm tracking-tight truncate">P4 Integration</span>
+        </div>
 
-          <div class="flex items-center gap-4 flex-shrink-0">
-            <!-- User Profile & Logout -->
-            {% if session.get('p4_user') %}
-            <div class="hidden sm:flex items-center gap-3 px-2 border-r border-slate-200 mr-2">
-              <div class="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200">
-                <i class="fa-solid fa-user-circle text-slate-400"></i>
-                <span class="font-medium text-slate-800">{{ session.get('p4_user') }}</span>
-              </div>
-              <a href="/logout" class="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-red-600 transition-colors px-2 py-1.5 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-100" title="Switch User / Logout">
-                <i class="fa-solid fa-right-from-bracket"></i>
-                <span>Exit</span>
-              </a>
-            </div>
-            {% endif %}
+        <!-- Navigation -->
+        {% set current_path = request.path %}
+        <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
+          <a href="/admin" class="nav-item {{ 'active' if current_path == '/admin' or current_path == '/' else '' }}">
+            <i class="fa-solid fa-table-columns nav-icon"></i>
+            Dashboard
+          </a>
+          <a href="/templates" class="nav-item {{ 'active' if current_path.startswith('/templates') else '' }}">
+            <i class="fa-solid fa-file-code nav-icon"></i>
+            Templates
+          </a>
+          <a href="/schedules" class="nav-item {{ 'active' if current_path.startswith('/schedules') else '' }}">
+            <i class="fa-solid fa-clock nav-icon"></i>
+            Schedules
+          </a>
+          <a href="/settings" class="nav-item {{ 'active' if current_path == '/settings' else '' }}">
+            <i class="fa-solid fa-cog nav-icon"></i>
+            Settings
+          </a>
+        </nav>
 
-            {% set cfg = (config or {}) %}
-            {% set ssh_cfg = (cfg.get('ssh', {}) if cfg else {}) %}
-            {% set agent_cfg = (cfg.get('agent', {}) if cfg else {}) %}
-            
-            <div id="agent-status" class="hidden sm:flex items-center px-3 py-1.5 bg-slate-100 rounded-full border border-slate-200 text-xs font-medium text-slate-600 cursor-pointer whitespace-nowrap" title="Click to see Agent status">
-              <div id="agent-status-dot" class="w-2 h-2 rounded-full bg-gray-400 mr-2 flex-shrink-0"></div>
-              <span id="agent-status-text">Checking...</span>
+        <!-- User section -->
+        {% if session.get('p4_user') %}
+        <div class="flex-shrink-0 border-t border-slate-800 p-3">
+          <div class="flex items-center gap-2.5 px-2 py-1.5 rounded-lg">
+            <div class="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-user text-slate-400 text-[10px]"></i>
             </div>
-            
-            <a href="/admin/submit" class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium shadow-sm shadow-primary-500/30 transition-all transform active:scale-95 flex items-center gap-2 whitespace-nowrap">
-              <i class="fa-solid fa-plus"></i> <span class="hidden sm:inline">New Job</span>
+            <span class="text-xs text-slate-400 font-medium truncate flex-1">{{ session.get('p4_user') }}</span>
+            <a href="/logout" class="text-slate-600 hover:text-red-400 transition-colors flex-shrink-0" title="Logout">
+              <i class="fa-solid fa-right-from-bracket text-xs"></i>
             </a>
           </div>
         </div>
-      </div>
-    </nav>
+        {% endif %}
+      </aside>
 
-    <!-- Main Content -->
-    <main class="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-screen">
-      {% block content %}{% endblock %}
-    </main>
+      <!-- ═══════════════════════════════════════ -->
+      <!--  MAIN AREA                             -->
+      <!-- ═══════════════════════════════════════ -->
+      <div class="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
+
+        <!-- Top Bar -->
+        <header class="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0">
+          <!-- Mobile: logo + nav toggle placeholder -->
+          <div class="flex items-center gap-3 md:hidden">
+            <div class="w-6 h-6 bg-gradient-to-br from-indigo-400 via-blue-500 to-cyan-400 rounded-md flex items-center justify-center">
+              <i class="fa-solid fa-code-branch text-white text-[10px]"></i>
+            </div>
+            <span class="font-semibold text-slate-900 text-sm">P4 Integration</span>
+          </div>
+
+          <!-- Desktop: current section breadcrumb -->
+          {% set current_path = request.path %}
+          <div class="hidden md:flex items-center gap-2 text-sm text-slate-500">
+            {% if current_path.startswith('/jobs/') %}
+              <a href="/admin" class="hover:text-slate-700 transition-colors">Dashboard</a>
+              <i class="fa-solid fa-chevron-right text-[10px] text-slate-300"></i>
+              <span class="text-slate-800 font-medium">Job Details</span>
+            {% elif current_path.startswith('/templates/') and current_path != '/templates' %}
+              <a href="/templates" class="hover:text-slate-700 transition-colors">Templates</a>
+              <i class="fa-solid fa-chevron-right text-[10px] text-slate-300"></i>
+              <span class="text-slate-800 font-medium">{{ 'Edit Template' if 'edit' in current_path else 'New Template' }}</span>
+            {% elif current_path.startswith('/schedules/') and current_path != '/schedules' %}
+              <a href="/schedules" class="hover:text-slate-700 transition-colors">Schedules</a>
+              <i class="fa-solid fa-chevron-right text-[10px] text-slate-300"></i>
+              <span class="text-slate-800 font-medium">{{ 'Edit Schedule' if 'edit' in current_path else 'New Schedule' }}</span>
+            {% else %}
+              <span class="text-slate-400 text-xs">P4 Integration</span>
+            {% endif %}
+          </div>
+
+          <!-- Right: agent status + new job -->
+          <div class="flex items-center gap-3 ml-auto">
+            <div id="agent-status" class="hidden sm:flex items-center px-2.5 py-1.5 bg-slate-100 rounded-full border border-slate-200 text-xs font-medium text-slate-600 cursor-pointer whitespace-nowrap gap-1.5" title="Click to see Agent status">
+              <div id="agent-status-dot" class="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0"></div>
+              <span id="agent-status-text">Checking...</span>
+            </div>
+            <a href="/admin/submit" class="px-3.5 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium shadow-sm shadow-primary-500/30 hover:shadow-md hover:shadow-primary-500/40 transition-all transform active:scale-95 flex items-center gap-1.5 whitespace-nowrap">
+              <i class="fa-solid fa-plus text-xs"></i>
+              <span>New Job</span>
+            </a>
+          </div>
+        </header>
+
+        <!-- Content -->
+        <main class="flex-1 overflow-auto content-scroll content-bg">
+          <div class="max-w-7xl mx-auto px-6 py-6">
+            {% block content %}{% endblock %}
+          </div>
+        </main>
+      </div>
+    </div>
 
     <!-- Toast Notification -->
     <div id="toast" class="toast flex items-center gap-3">
@@ -199,40 +274,39 @@
           el.title = new Date(ts * 1000).toLocaleString();
         });
       }
-      
+
       updateTimestamps();
       setInterval(updateTimestamps, 30000);
+
       // Agent Status Monitor
       async function updateAgentStatus() {
         try {
           const response = await fetch('/api/agents/status');
           const data = await response.json();
-          
+
           const statusDot = document.getElementById('agent-status-dot');
           const statusText = document.getElementById('agent-status-text');
           const statusDiv = document.getElementById('agent-status');
-          
+
           if (!statusDot || !statusText || !statusDiv) return;
-          
+
           const connectedCount = Object.keys(data.connected || {}).length;
           const expectedCount = Object.keys(data.expected || {}).length;
-          
-          // Update status dot color
+
           if (connectedCount > 0) {
             statusDot.classList.remove('bg-gray-400', 'bg-yellow-500', 'animate-pulse');
             statusDot.classList.add('bg-green-500');
-            statusText.textContent = `Agents: ${connectedCount} connected`;
+            statusText.textContent = `${connectedCount} agent${connectedCount > 1 ? 's' : ''} connected`;
           } else if (expectedCount > 0) {
             statusDot.classList.remove('bg-gray-400', 'bg-green-500');
             statusDot.classList.add('bg-yellow-500', 'animate-pulse');
-            statusText.textContent = `Agents: ${expectedCount} connecting...`;
+            statusText.textContent = `${expectedCount} connecting...`;
           } else {
             statusDot.classList.remove('bg-green-500', 'bg-yellow-500', 'animate-pulse');
             statusDot.classList.add('bg-gray-400');
-            statusText.textContent = 'Agents: 0 connected';
+            statusText.textContent = 'No agents';
           }
-          
-          // Update tooltip with details
+
           let tooltipText = 'Agent Status:\n';
           if (connectedCount > 0) {
             tooltipText += '\nConnected:\n';
@@ -249,15 +323,14 @@
             }
           }
           statusDiv.title = tooltipText;
-          
+
         } catch (e) {
           console.error('Failed to update agent status:', e);
         }
       }
-      
-      // Update every 2 seconds
+
       setInterval(updateAgentStatus, 2000);
-      updateAgentStatus(); // Initial update
+      updateAgentStatus();
     })();
     </script>
   </body>

@@ -53,14 +53,14 @@
             <label class="block text-xs font-medium text-blue-800 mb-1">P4 Port</label>
             <input type="text" name="p4_port" id="p4_port" 
                    value="{{ template.config.p4.port if template and template.config.p4 else '' }}"
-                   class="w-full px-3 py-1.5 border border-blue-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                   class="w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
                    placeholder="e.g. srdcp4ps1.amd.com:1677">
           </div>
           <div>
             <label class="block text-xs font-medium text-blue-800 mb-1">P4 Client</label>
             <input type="text" name="p4_client" id="p4_client"
                    value="{{ template.config.p4.client if template and template.config.p4 else '' }}"
-                   class="w-full px-3 py-1.5 border border-blue-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                   class="w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
                    placeholder="e.g. user_workspace_name">
           </div>
         </div>
@@ -146,48 +146,48 @@
       <hr class="border-slate-200">
 
       <!-- SSH Configuration -->
-      <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 space-y-4">
-        <h3 class="text-sm font-semibold text-purple-900 flex items-center gap-2">
-          <i class="fa-solid fa-terminal"></i> SSH Configuration
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-4">
+        <h3 class="text-sm font-semibold text-blue-900 flex items-center gap-2">
+          <i class="fa-solid fa-terminal text-blue-600"></i> SSH Configuration
         </h3>
-        
+
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-medium text-purple-800 mb-1">SSH Host</label>
+            <label class="block text-xs font-medium text-blue-800 mb-1">SSH Host</label>
             <input type="text" name="ssh_host" id="ssh_host"
                    value="{{ template.config.ssh.ssh_host if template and template.config.ssh else '' }}"
-                   class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
+                   class="w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
                    placeholder="e.g. atletx8-neu22">
           </div>
           <div>
-            <label class="block text-xs font-medium text-purple-800 mb-1">SSH Port</label>
+            <label class="block text-xs font-medium text-blue-800 mb-1">SSH Port</label>
             <input type="number" name="ssh_port" id="ssh_port"
                    value="{{ template.config.ssh.ssh_port if template and template.config.ssh else 22 }}"
-                   class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm">
+                   class="w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white">
           </div>
         </div>
-        
+
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-medium text-purple-800 mb-1">Master Host (callback)</label>
+            <label class="block text-xs font-medium text-blue-800 mb-1">Master Host (callback)</label>
             <input type="text" name="master_host" id="master_host"
                    value="{{ template.config.ssh.master_host if template and template.config.ssh else master_host }}"
-                   class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
+                   class="w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
                    placeholder="IP or hostname of this server">
           </div>
           <div>
-            <label class="block text-xs font-medium text-purple-800 mb-1">Master Port</label>
+            <label class="block text-xs font-medium text-blue-800 mb-1">Master Port</label>
             <input type="number" name="master_port" id="master_port"
                    value="{{ template.config.ssh.master_port if template and template.config.ssh else 9090 }}"
-                   class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm">
+                   class="w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white">
           </div>
         </div>
-        
+
         <div>
-          <label class="block text-xs font-medium text-purple-800 mb-1">Python Path</label>
+          <label class="block text-xs font-medium text-blue-800 mb-1">Python Path</label>
           <input type="text" name="python_path" id="python_path"
                  value="{{ template.config.ssh.python_path if template and template.config.ssh else 'python3' }}"
-                 class="w-full px-3 py-1.5 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-sm"
+                 class="w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
                  placeholder="python3">
         </div>
       </div>

@@ -1,55 +1,136 @@
-{% extends "layout.html" %}
+{% extends "layout_auth.html" %}
 
 {% block content %}
-<div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-  <div class="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-md border border-slate-200">
-    <div>
-      <div class="mx-auto h-12 w-12 bg-primary-100 rounded-full flex items-center justify-center">
-        <i class="fa-solid fa-user-shield text-primary-600 text-xl"></i>
+<div class="flex gap-0 rounded-2xl overflow-hidden shadow-xl border border-slate-200 min-h-screen">
+
+  <!-- Left: Brand Panel -->
+  <div class="hidden lg:flex lg:w-5/12 flex-col justify-between p-10 relative overflow-hidden flex-shrink-0"
+       style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 45%, #1e3a8a 100%);">
+    <!-- Grid overlay -->
+    <div class="absolute inset-0 opacity-10" style="background-image: linear-gradient(rgba(255,255,255,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.2) 1px, transparent 1px); background-size: 36px 36px;"></div>
+    <!-- Branch SVG decoration -->
+    <svg class="absolute bottom-4 right-4 opacity-[0.07] w-72 h-72" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M20 180 L20 80 L80 80 L80 30" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M20 80 L120 80 L120 50" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M80 80 L80 140 L150 140" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M120 50 L120 20 L170 20" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="5 4"/>
+      <circle cx="20" cy="180" r="5" fill="white"/>
+      <circle cx="80" cy="30" r="5" fill="#60a5fa"/>
+      <circle cx="120" cy="50" r="5" fill="#a78bfa"/>
+      <circle cx="150" cy="140" r="5" fill="#34d399"/>
+      <circle cx="170" cy="20" r="3.5" fill="white" fill-opacity="0.4"/>
+    </svg>
+
+    <!-- Top section -->
+    <div class="relative z-10">
+      <div class="flex items-center gap-3 mb-10">
+        <div class="w-9 h-9 bg-gradient-to-br from-indigo-400 via-blue-500 to-cyan-400 rounded-xl flex items-center justify-center shadow-lg">
+          <i class="fa-solid fa-code-branch text-white text-sm"></i>
+        </div>
+        <span class="text-white font-bold text-lg tracking-tight">P4 Integration</span>
       </div>
-      <h2 class="mt-6 text-center text-3xl font-extrabold text-slate-900">
-        Sign in to P4 Integration
-      </h2>
-      <p class="mt-2 text-center text-sm text-slate-600">
-        Please enter your Perforce credentials
+      <h1 class="text-2xl font-bold text-white leading-snug mb-3">
+        Automate your<br>Perforce integrations
+      </h1>
+      <p class="text-slate-400 text-sm leading-relaxed">
+        Schedule, monitor, and manage P4 branch integrations from one place. Real-time logs, conflict resolution, and template-based automation.
       </p>
     </div>
-    {% if error %}
-    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">
-      <div class="flex items-center">
-        <i class="fa-solid fa-circle-exclamation mr-2"></i>
-        <span>{{ error }}</span>
+
+    <!-- Feature bullets -->
+    <div class="relative z-10 space-y-3">
+      <div class="flex items-center gap-3">
+        <div class="w-7 h-7 rounded-lg bg-blue-500/20 border border-blue-400/30 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-bolt text-blue-400 text-[10px]"></i>
+        </div>
+        <span class="text-slate-300 text-xs">Automated sync with cron scheduling</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-terminal text-emerald-400 text-[10px]"></i>
+        </div>
+        <span class="text-slate-300 text-xs">Real-time logs and conflict detection</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="w-7 h-7 rounded-lg bg-purple-500/20 border border-purple-400/30 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-file-code text-purple-400 text-[10px]"></i>
+        </div>
+        <span class="text-slate-300 text-xs">Reusable templates for common patterns</span>
       </div>
     </div>
-    {% endif %}
-    <form class="mt-8 space-y-6" action="/login" method="POST">
-      <div class="rounded-md shadow-sm -space-y-px">
-        <div>
-          <label for="p4_user" class="sr-only">P4 Username</label>
-          <input id="p4_user" name="p4_user" type="text" required class="appearance-none rounded-none rounded-t-md relative block w-full px-3 py-2 border border-slate-300 placeholder-slate-500 text-slate-900 focus:outline-none focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm" placeholder="P4 Username" value="{{ last_user or '' }}">
+
+    <!-- Bottom footer -->
+    <p class="relative z-10 text-slate-600 text-xs">Internal DevOps Tool &mdash; AMD Graphics</p>
+  </div>
+
+  <!-- Right: Login Form -->
+  <div class="flex-1 flex items-center justify-center p-8 bg-white">
+    <div class="w-full max-w-sm">
+
+      <!-- Mobile logo -->
+      <div class="flex items-center gap-2 mb-8 lg:hidden">
+        <div class="w-8 h-8 bg-gradient-to-br from-indigo-500 via-blue-600 to-cyan-500 rounded-lg flex items-center justify-center">
+          <i class="fa-solid fa-code-branch text-white text-sm"></i>
         </div>
-        <div>
-          <label for="p4_password" class="sr-only">P4 Password</label>
-          <input id="p4_password" name="p4_password" type="password" required class="appearance-none rounded-none rounded-b-md relative block w-full px-3 py-2 border border-slate-300 placeholder-slate-500 text-slate-900 focus:outline-none focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm" placeholder="P4 Password">
-        </div>
+        <span class="font-bold text-slate-900">P4 Integration</span>
       </div>
 
-      <div>
-        <button type="submit" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors">
-          <span class="absolute left-0 inset-y-0 flex items-center pl-3">
-            <i class="fa-solid fa-lock text-primary-500 group-hover:text-primary-400"></i>
-          </span>
+      <div class="mb-8">
+        <h2 class="text-2xl font-bold text-slate-900 tracking-tight">Sign in</h2>
+        <p class="text-sm text-slate-500 mt-1">Enter your Perforce credentials to continue</p>
+      </div>
+
+      {% if error %}
+      <div class="mb-6 flex gap-3 p-3.5 bg-red-50 border-l-4 border-red-500 rounded-r-lg">
+        <i class="fa-solid fa-circle-exclamation text-red-500 mt-0.5 flex-shrink-0 text-sm"></i>
+        <span class="text-sm text-red-700">{{ error }}</span>
+      </div>
+      {% endif %}
+
+      <form action="/login" method="POST" class="space-y-5">
+        <!-- Username -->
+        <div>
+          <label for="p4_user" class="block text-sm font-medium text-slate-700 mb-1.5">P4 Username</label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <i class="fa-solid fa-user text-slate-400 text-sm"></i>
+            </div>
+            <input id="p4_user" name="p4_user" type="text" required autocomplete="username"
+              class="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+              placeholder="your_p4_username"
+              value="{{ last_user or '' }}">
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div>
+          <label for="p4_password" class="block text-sm font-medium text-slate-700 mb-1.5">P4 Password</label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <i class="fa-solid fa-lock text-slate-400 text-sm"></i>
+            </div>
+            <input id="p4_password" name="p4_password" type="password" required autocomplete="current-password"
+              class="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+              placeholder="••••••••">
+          </div>
+        </div>
+
+        <!-- Submit -->
+        <button type="submit"
+          class="w-full py-2.5 px-4 mt-2 bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-700 hover:to-indigo-700 text-white text-sm font-semibold rounded-lg shadow-md shadow-primary-500/25 hover:shadow-lg hover:shadow-primary-500/40 transition-all transform active:scale-[0.98] flex items-center justify-center gap-2">
+          <i class="fa-solid fa-arrow-right-to-bracket"></i>
           Sign in
         </button>
-      </div>
-    </form>
+      </form>
+    </div>
   </div>
+
 </div>
 
 <script>
 (function(){
   const userInput = document.getElementById('p4_user');
-  
+
   // Load saved username (only if server didn't provide one from failed login)
   if(userInput) {
     if(!userInput.value) {
@@ -58,7 +139,7 @@
         userInput.value = savedUser;
       }
     }
-    
+
     // Save username on submit
     document.querySelector('form').addEventListener('submit', function() {
       if(userInput.value.trim()) {
@@ -69,4 +150,3 @@
 })();
 </script>
 {% endblock %}
-
