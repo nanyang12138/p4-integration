@@ -21,3 +21,15 @@
 #   backup_count: 10
 #
 # data_dir: /var/lib/p4_integ/data
+#
+# p4:
+#   bin: /tool/pandora64/bin/p4      # Path to the p4 binary
+#
+# p4push:
+#   init_script: /proj/verif_release_ro/cbwa_initscript/current/cbwa_init.bash
+#
+# job:
+#   timeout_hours: 4                 # Max hours a job can run before being cancelled
+#
+# name_check:
+#   max_passes: 5                    # Max name_check remediation passes during SHELVE

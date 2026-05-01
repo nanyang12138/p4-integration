@@ -37,7 +37,7 @@
             <i class="fa-solid fa-cube"></i>
           </div>
           <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <button onclick="runTemplate('{{ tpl.id }}', '{{ tpl.config.workspace or '' }}')" class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center transition-colors" title="Run Job">
+            <button onclick="runTemplate('{{ tpl.id }}', {{ tpl.config.workspace | tojson | forceescape }}, {{ (tpl.config.build_command or '') | tojson | forceescape }}, {{ (tpl.config.component_updates or []) | tojson | forceescape }})" class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center transition-colors" title="Run Job">
               <i class="fa-solid fa-play text-xs"></i>
             </button>
             {% if tpl.owner == session.get('p4_user') %}
@@ -97,7 +97,7 @@
             <i class="fa-solid fa-file-code"></i>
           </div>
           <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <button onclick="runTemplate('{{ tpl.id }}', '{{ tpl.config.workspace or '' }}')" class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center transition-colors" title="Run Job">
+            <button onclick="runTemplate('{{ tpl.id }}', {{ tpl.config.workspace | tojson | forceescape }}, {{ (tpl.config.build_command or '') | tojson | forceescape }}, {{ (tpl.config.component_updates or []) | tojson | forceescape }})" class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center transition-colors" title="Run Job">
               <i class="fa-solid fa-play text-xs"></i>
             </button>
             <a href="/templates/{{ tpl.id }}/edit" class="w-8 h-8 rounded-full bg-slate-50 text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors" title="Edit">
@@ -190,7 +190,7 @@
 // Track if a submission is in progress to prevent double clicks
 let isSubmitting = false;
 
-function runTemplate(templateId, workspace) {
+function runTemplate(templateId, workspace, buildCommand, componentUpdates) {
   // Prevent opening modal if already submitting
   if (isSubmitting) return;
 
@@ -198,9 +198,16 @@ function runTemplate(templateId, workspace) {
   if (workspace) {
     document.getElementById('runWorkspace').value = workspace;
   }
-  // Reset component update rows on each open
+  // Pre-fill build_command from template
+  document.getElementById('runBuildCommand').value = buildCommand || '';
+  // Pre-fill component_updates from template
   var compList = document.getElementById('runComponentUpdates');
-  if (compList) compList.innerHTML = '';
+  if (compList) {
+    compList.innerHTML = '';
+    (componentUpdates || []).forEach(function(item) {
+      addRunComponentRow(item.name, item.cl);
+    });
+  }
   document.getElementById('runModal').classList.remove('hidden');
   document.getElementById('runModal').classList.add('flex');
 }

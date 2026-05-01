@@ -329,8 +329,19 @@
         }
       }
 
-      setInterval(updateAgentStatus, 2000);
+      var _agentStatusInterval = setInterval(updateAgentStatus, 2000);
       updateAgentStatus();
+
+      // Pause polling while the tab is hidden to save resources
+      document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+          clearInterval(_agentStatusInterval);
+          _agentStatusInterval = null;
+        } else if (!_agentStatusInterval) {
+          _agentStatusInterval = setInterval(updateAgentStatus, 2000);
+          updateAgentStatus();
+        }
+      });
     })();
     </script>
   </body>

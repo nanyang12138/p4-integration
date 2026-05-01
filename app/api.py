@@ -497,7 +497,7 @@ def cancel_queued_job(job_id):
 @bp.route('/jobs', methods=['POST'])
 def create_job():
     """Create and start a new job via API
-    
+
     Required fields in request JSON:
     - job_id: Unique job identifier
     - spec: Job specification (workspace, branch_spec, etc.)
@@ -505,6 +505,8 @@ def create_job():
     - master_host: Master host IP for agent callback
     - master_port: Master port for agent callback (default: 9090)
     """
+    if not session.get('p4_user'):
+        return jsonify({"error": "Authentication required"}), 401
     data = request.json
     job_id = data.get("job_id")
     spec = data.get("spec")

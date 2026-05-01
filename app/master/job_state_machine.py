@@ -52,15 +52,64 @@ class JobStateMachine:
         self.jobs: Dict[str, dict] = {}  # job_id -> job_info
         self.cmd_to_job: Dict[str, str] = {}  # cmd_id -> job_id
         self.logs: Dict[str, List[dict]] = {}  # job_id -> [log_entries]
-        
+
         # Register as event handler
         self.agent_server.register_event_handler(self)
-        
+
         # Background task for conflict monitoring
         self.monitor_tasks: Dict[str, asyncio.Task] = {}
-        
+        # Background task for job timeouts
+        self.timeout_tasks: Dict[str, asyncio.Task] = {}
+
         # Workspace queue manager reference (set externally)
         self._workspace_queue = None
+
+        # Load historical jobs from disk
+        data_dir = config.get("data_dir", "data")
+        self._jobs_dir = os.path.join(data_dir, "jobs")
+        self._load_persistent_jobs()
+
+    def _jobs_path(self, job_id: str) -> str:
+        return os.path.join(self._jobs_dir, f"{job_id}.json")
+
+    def _persist_job(self, job_id: str):
+        """Write job snapshot to disk (password stripped)."""
+        import copy
+        job = self.jobs.get(job_id)
+        if not job:
+            return
+        try:
+            os.makedirs(self._jobs_dir, exist_ok=True)
+            job_copy = copy.deepcopy(job)
+            job_copy.get("spec", {}).get("p4", {}).pop("password", None)
+            with open(self._jobs_path(job_id), "w") as f:
+                json.dump(job_copy, f, default=str, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to persist job {job_id}: {e}")
+
+    def _load_persistent_jobs(self):
+        """Load completed/interrupted jobs from disk on startup."""
+        if not os.path.exists(self._jobs_dir):
+            return
+        for fname in os.listdir(self._jobs_dir):
+            if not fname.endswith(".json"):
+                continue
+            path = os.path.join(self._jobs_dir, fname)
+            try:
+                with open(path) as f:
+                    job = json.load(f)
+                job_id = job.get("job_id")
+                if not job_id:
+                    continue
+                # Any non-terminal job from a previous session cannot be resumed
+                if job.get("stage") not in (Stage.DONE.value, Stage.ERROR.value):
+                    job["stage"] = Stage.ERROR.value
+                    job["status"] = "error"
+                    job["error"] = "[SERVER RESTART] Job was interrupted by a server restart"
+                self.jobs[job_id] = job
+                self.logs[job_id] = []  # Logs live in their own files
+            except Exception as e:
+                logger.warning(f"Failed to load persisted job from {fname}: {e}")
     
     def set_workspace_queue(self, queue_manager):
         """Set the workspace queue manager for job coordination"""
@@ -104,13 +153,34 @@ class JobStateMachine:
         logger.info(f"Created job {job_id} for agent {agent_id}, owner: {owner}, source CL: {spec.get('changelist', 'latest')}")
         return job
     
+    async def _job_timeout_task(self, job_id: str, timeout_seconds: float):
+        """Cancel job after timeout_seconds if still running."""
+        await asyncio.sleep(timeout_seconds)
+        job = self.jobs.get(job_id)
+        if not job:
+            return
+        stage = job.get("stage", "")
+        if stage in (Stage.DONE.value, Stage.ERROR.value):
+            return
+        hours = timeout_seconds / 3600
+        msg = f"[TIMEOUT] Job exceeded maximum runtime ({hours:.1f}h), cancelling..."
+        logger.warning(f"Job {job_id} timed out after {timeout_seconds}s")
+        self._add_log_entry(job_id, "stderr", msg)
+        await self.cancel_job(job_id)
+
     async def start_job(self, job_id: str):
         """Kick off the job"""
         if job_id not in self.jobs:
             raise ValueError(f"Job {job_id} not found")
-        
+
         job = self.jobs[job_id]
-        
+
+        # Start job timeout watchdog
+        timeout_hours = self.config.get("job", {}).get("timeout_hours", 4)
+        self.timeout_tasks[job_id] = asyncio.create_task(
+            self._job_timeout_task(job_id, timeout_hours * 3600)
+        )
+
         # Check if we need to get latest changelist
         if not job.get("source_changelist") or job["source_changelist"] == "latest":
             # Need to get latest CL first
@@ -142,16 +212,24 @@ class JobStateMachine:
             logger.info(f"Job {job_id} waiting for manual conflict resolution")
             return
 
+        if next_stage in (Stage.DONE, Stage.ERROR):
+            # Cancel timeout watchdog
+            t = self.timeout_tasks.pop(job_id, None)
+            if t:
+                t.cancel()
+
         if next_stage == Stage.DONE:
             logger.info(f"Job {job_id} completed successfully")
             await self._shutdown_agent(job_id, "Job completed successfully")
             self._release_workspace(job_id)
+            self._persist_job(job_id)
             return
-            
+
         if next_stage == Stage.ERROR:
             logger.error(f"Job {job_id} failed")
             await self._shutdown_agent(job_id, "Job failed")
             self._release_workspace(job_id)
+            self._persist_job(job_id)
             return
         
         if next_stage == Stage.CLEANUP:
@@ -229,7 +307,7 @@ class JobStateMachine:
         
         # Get P4 configuration from job spec
         p4_config = spec.get("p4", {})
-        p4_bin = "/tool/pandora64/bin/p4"  # Hardcoded per requirements
+        p4_bin = self.config.get("p4", {}).get("bin", "/tool/pandora64/bin/p4")
         p4_port = p4_config.get("port", "")
         p4_client = p4_config.get("client", "")
         p4_user = p4_config.get("user", "")
@@ -272,8 +350,10 @@ class JobStateMachine:
         safe_password = p4_password.replace("'", "'\"'\"'")
         p4_password_arg = f"'{safe_password}'"
         
-        # Hardcoded init script path
-        init_script = "/proj/verif_release_ro/cbwa_initscript/current/cbwa_init.bash"
+        init_script = self.config.get("p4push", {}).get(
+            "init_script",
+            "/proj/verif_release_ro/cbwa_initscript/current/cbwa_init.bash"
+        )
         
         # Handle INTEGRATE command variations
         branch_spec = spec.get('branch_spec')
@@ -281,28 +361,34 @@ class JobStateMachine:
         target = spec.get('target', '')
         # Use fetched source_changelist (from GET_LATEST_CL) if available, otherwise fall back to spec
         source_rev_change = job.get('source_changelist') or spec.get('changelist')
-        
+
+        # Shell-quote all user-supplied values that are interpolated into commands
+        workspace_q = shlex.quote(workspace)
+        branch_spec_q = shlex.quote(branch_spec) if branch_spec else None
+        source_q = shlex.quote(source) if source else ''
+        target_q = shlex.quote(target) if target else ''
+
         # Build integrate command with explicit parameters
         integrate_cmd = ""
         # Base P4 command with all explicit parameters
         # NOTE: We construct the command string manually with quotes to avoid shlex issues with !
         p4_base = f"{p4_bin} -p {p4_port} -u {p4_user} -c {p4_client} -P {p4_password_arg}"
-        
+
         if branch_spec:
             # Branch mode
             if source_rev_change:
-                integrate_cmd = f"{p4_base} integrate -b {branch_spec} ...@{int(source_rev_change)}"
+                integrate_cmd = f"{p4_base} integrate -b {branch_spec_q} ...@{int(source_rev_change)}"
             else:
                 # Use latest if not specified
-                integrate_cmd = f"{p4_base} integrate -b {branch_spec}"
+                integrate_cmd = f"{p4_base} integrate -b {branch_spec_q}"
         elif source and target:
-            # Direct mode
-            src_arg = source + (f"@{source_rev_change}" if source_rev_change else "")
-            integrate_cmd = f"{p4_base} integrate {src_arg} {target}"
+            # Direct mode — quote source+rev together so the @CL stays with the path
+            src_with_rev = source + (f"@{source_rev_change}" if source_rev_change else "")
+            integrate_cmd = f"{p4_base} integrate {shlex.quote(src_with_rev)} {target_q}"
         else:
             # Fallback (will likely fail)
             path = spec.get('path', '')
-            integrate_cmd = f"{p4_base} integrate {path}"
+            integrate_cmd = f"{p4_base} integrate {shlex.quote(path)}"
         
         # Build SHELVE command (complex multi-step) with explicit parameters
         # Get a meaningful name for the spec
@@ -391,15 +477,15 @@ echo "CHANGELIST:$cl"
         get_latest_cl_cmd = ""
         if branch_spec:
             # Get latest CL from branch spec
-            get_latest_cl_cmd = f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} branch -o {branch_spec} | grep '//' | head -n 1 | awk '{{print $1}}' | xargs -I {{}} {p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} changes -m 1 -s submitted {{}} | awk '{{print $2}}'"
+            get_latest_cl_cmd = f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} branch -o {branch_spec_q} | grep '//' | head -n 1 | awk '{{print $1}}' | xargs -I {{}} {p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} changes -m 1 -s submitted {{}} | awk '{{print $2}}'"
         elif source:
             # Get latest CL from source path
-            get_latest_cl_cmd = f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} changes -m 1 -s submitted {source}... | awk '{{print $2}}'"
-        
+            get_latest_cl_cmd = f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} changes -m 1 -s submitted {shlex.quote(source + '...')} | awk '{{print $2}}'"
+
         # Build P4PUSH command with trial support
         trial_flag = "-trial" if spec.get("trial") else ""
         # Use job["changelist"] which will be set after SHELVE completes
-        p4push_cmd = f"cd {workspace} && source {init_script} && bootenv && p4push {trial_flag} -c {{changelist}}"
+        p4push_cmd = f"cd {workspace_q} && source {init_script} && bootenv && p4push {trial_flag} -c {{changelist}}"
         # Note: {changelist} placeholder will be replaced in transition_to when we have the actual CL
         
         # UPDATE_COMPONENT stage: user-provided list of {name, cl} pairs.
@@ -441,7 +527,7 @@ echo "CHANGELIST:$cl"
             # Once opened, SHELVE will reopen it into the integration changelist,
             # so the component bumps land in the same submitted CL.
             update_component_cmd = (
-                f"cd {workspace} && "
+                f"cd {workspace_q} && "
                 f"{p4_base} edit _env/local/env.cfg && "
                 f"python3 -c 'import base64; exec(base64.b64decode(\"{py_b64}\").decode())' && "
                 f"source {init_script} && "
@@ -457,14 +543,14 @@ echo "CHANGELIST:$cl"
         user_build_cmd = (spec.get('build_command') or '').strip()
         if user_build_cmd:
             build_inner = (
-                "source /proj/verif_release_ro/cbwa_initscript/current/cbwa_init.bash && "
+                f"source {init_script} && "
                 "bootenv && "
                 "clobber all && "
                 f"{user_build_cmd}"
             )
             inner_b64 = base64.b64encode(build_inner.encode()).decode()
             build_cmd = (
-                f"cd {workspace} && bash -c '"
+                f"cd {workspace_q} && bash -c '"
                 "set -o pipefail; "
                 "_LSF_BEFORE=$(bjobs -u $USER -o jobid -noheader 2>/dev/null | sort -u); "
                 "_kill_lsf() { "
@@ -486,7 +572,7 @@ echo "CHANGELIST:$cl"
 
         commands = {
             Stage.GET_LATEST_CL: get_latest_cl_cmd,
-            Stage.SYNC: f"cd {workspace} && source {init_script} && bootenv && p4w sync_all -bsc",
+            Stage.SYNC: f"cd {workspace_q} && source {init_script} && bootenv && p4w sync_all -bsc",
             Stage.UPDATE_COMPONENT: update_component_cmd,
             Stage.INTEGRATE: integrate_cmd,
             Stage.RESOLVE_PASS_1: f"{p4_base} resolve -am",
