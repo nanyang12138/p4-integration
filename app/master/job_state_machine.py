@@ -573,9 +573,26 @@ echo "CHANGELIST:$cl"
         else:
             build_cmd = None  # No pre-build command -> BUILD will be skipped
 
+        # Workspace pre-flight cleanup: revert all opened files and delete any
+        # shelved/pending CLs owned by this client before syncing.
+        # Uses ';' so a clean workspace (nothing to revert/delete) doesn't fail.
+        # All commands are scoped to {p4_client} — no other workspaces are touched.
+        workspace_cleanup = (
+            f"{p4_base} revert //... ; "
+            f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} changes -s shelved -c {p4_client}"
+            f" | awk '{{print $2}}' | while read cl; do"
+            f"   {p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} shelve -d -c $cl ;"
+            f"   {p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} change -d $cl ;"
+            f" done ; "
+            f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} changes -s pending -c {p4_client}"
+            f" | awk '{{print $2}}' | while read cl; do"
+            f"   {p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} change -d $cl 2>/dev/null || true ;"
+            f" done"
+        )
+
         commands = {
             Stage.GET_LATEST_CL: get_latest_cl_cmd,
-            Stage.SYNC: f"cd {workspace_q} && source {init_script} && bootenv && p4w sync_all -bsc",
+            Stage.SYNC: f"{workspace_cleanup} && cd {workspace_q} && source {init_script} && bootenv && p4w sync_all -bsc",
             Stage.UPDATE_COMPONENT: update_component_cmd,
             Stage.INTEGRATE: integrate_cmd,
             Stage.RESOLVE_PASS_1: f"{p4_base} resolve -am",
@@ -967,13 +984,14 @@ echo "CHANGELIST:$cl"
             if l.get("cmd_id") == current_cmd_id
         ])
         
-        # Check for "already integrated" - nothing to do
+        # "Already integrated" means P4 has no new revisions to integrate.
+        # The workspace was cleaned before SYNC, so there should be no opened
+        # files — skip straight to DONE rather than trying to shelve nothing.
         if "already integrated" in all_output.lower():
-            warning_msg = "[INTEGRATE] All revision(s) already integrated - nothing to do"
-            logger.warning(f"Job {job_id}: {warning_msg}")
-            self._add_log_entry(job_id, "stderr", warning_msg)
-            job["error"] = warning_msg
-            return Stage.ERROR
+            self._add_log_entry(job_id, "stdout",
+                "[INTEGRATE] All revision(s) already integrated — workspace is up to date, nothing to shelve.")
+            logger.info(f"Job {job_id}: already integrated, marking DONE")
+            return Stage.DONE
         
         # Check for "no such file" or empty integrate
         if "no such file" in all_output.lower() or "no file(s) to integrate" in all_output.lower():
