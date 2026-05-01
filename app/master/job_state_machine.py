@@ -781,7 +781,8 @@ echo "CHANGELIST:$cl"
         job_id = self.cmd_to_job[cmd_id]
         job = self.jobs[job_id]
         current_stage = Stage(job["stage"])
-        job["current_cmd_id"] = None  # command is done; clear so cancel_job() won't send stale KILL_CMD
+        job["last_cmd_id"] = cmd_id   # save before clearing so analyze methods can filter logs
+        job["current_cmd_id"] = None  # clear so cancel_job() won't send stale KILL_CMD
 
         logger.info(f"Command {cmd_id} finished: code={exit_code}, job={job_id}, stage={current_stage.value}")
         
@@ -874,7 +875,7 @@ echo "CHANGELIST:$cl"
     def _analyze_get_latest_cl(self, job_id: str) -> Stage:
         """Parse latest changelist number from GET_LATEST_CL output"""
         job = self.jobs[job_id]
-        current_cmd_id = job.get("current_cmd_id")
+        current_cmd_id = job.get("last_cmd_id")
 
         # Filter by current cmd_id for consistency with other analyze methods
         stdout_output = "".join([
@@ -906,7 +907,7 @@ echo "CHANGELIST:$cl"
         Checks BOTH stdout and stderr since P4 may output to either stream.
         """
         job = self.jobs[job_id]
-        current_cmd_id = job.get("current_cmd_id")
+        current_cmd_id = job.get("last_cmd_id")
         
         # Collect ALL output (stdout + stderr) from the current command
         # P4 may output "No file(s) to resolve" to stderr in some versions
@@ -958,7 +959,7 @@ echo "CHANGELIST:$cl"
         succeeds (exit code 0) but produces no files to resolve/shelve/push.
         """
         job = self.jobs[job_id]
-        current_cmd_id = job.get("current_cmd_id")
+        current_cmd_id = job.get("last_cmd_id")
         
         # Collect all output (stdout + stderr)
         all_output = "".join([
@@ -1006,7 +1007,7 @@ echo "CHANGELIST:$cl"
         and how many were skipped (have conflicts).
         """
         job = self.jobs[job_id]
-        current_cmd_id = job.get("current_cmd_id")
+        current_cmd_id = job.get("last_cmd_id")
         
         # Collect all output (stdout + stderr)
         all_output = "".join([
@@ -1038,7 +1039,7 @@ echo "CHANGELIST:$cl"
         so we no longer need to check for name_check issues here.
         """
         job = self.jobs[job_id]
-        current_cmd_id = job.get("current_cmd_id")
+        current_cmd_id = job.get("last_cmd_id")
         
         # Filter logs for the current command only
         current_cmd_logs = [
@@ -1338,8 +1339,8 @@ echo "CHANGELIST:$cl"
         self._add_log_entry(job_id, "stderr", "[CANCEL] Job cancelled by user")
         
         agent_id = job.get("agent_id")
-        current_cmd_id = job.get("current_cmd_id")
-        
+        current_cmd_id = job.get("current_cmd_id")  # running cmd, not last completed
+
         if agent_id and agent_id in self.agent_server.agents and current_cmd_id:
             # Command is running: kill it and wait for CMD_DONE to trigger cleanup
             try:
