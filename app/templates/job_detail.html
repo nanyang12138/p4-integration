@@ -5,7 +5,7 @@
 {% set stage = job.stage | upper %}
 {% set status = job.status | upper if job.status else '' %}
 
-{# Map current stage to a phase index (0-5) #}
+{# Map current stage to a phase index (0-6) #}
 {% if stage in ['INIT', 'GET_LATEST_CL'] %}
   {% set phase = 0 %}
 {% elif stage == 'SYNC' %}
@@ -14,10 +14,12 @@
   {% set phase = 2 %}
 {% elif stage == 'NEEDS_RESOLVE' %}
   {% set phase = 3 %}
-{% elif stage in ['PRE_SUBMIT', 'SHELVE', 'P4PUSH', 'CLEANUP'] %}
+{% elif stage == 'BUILD' %}
   {% set phase = 4 %}
-{% elif stage in ['DONE', 'ERROR'] %}
+{% elif stage in ['PRE_SUBMIT', 'SHELVE', 'P4PUSH', 'CLEANUP'] %}
   {% set phase = 5 %}
+{% elif stage in ['DONE', 'ERROR'] %}
+  {% set phase = 6 %}
 {% else %}
   {% set phase = 0 %}
 {% endif %}
@@ -37,8 +39,9 @@
       ('Sync',      'fa-rotate',       1),
       ('Integrate', 'fa-code-merge',   2),
       ('Resolve',   'fa-handshake',    3),
-      ('Submit',    'fa-cloud-upload', 4),
-      ('Done',      'fa-circle-check', 5),
+      ('Build',     'fa-hammer',       4),
+      ('Submit',    'fa-cloud-upload', 5),
+      ('Done',      'fa-circle-check', 6),
     ] %}
 
     {% for name, icon, idx in phases %}

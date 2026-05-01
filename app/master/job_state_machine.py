@@ -9,6 +9,7 @@ import re
 import os
 import shlex
 import json
+import base64
 from typing import Dict, Optional, List, Any, Callable
 from datetime import datetime
 from enum import Enum
@@ -26,6 +27,7 @@ class Stage(Enum):
     RESOLVE_CHECK = "RESOLVE_CHECK"
     NEEDS_RESOLVE = "NEEDS_RESOLVE"
     PRE_SUBMIT = "PRE_SUBMIT"
+    BUILD = "BUILD"
     SHELVE = "SHELVE"
     P4PUSH = "P4PUSH"
     CLEANUP = "CLEANUP"  # Reverts opened files on failure before entering ERROR
@@ -37,7 +39,7 @@ class Stage(Enum):
 _NEEDS_CLEANUP_STAGE_VALUES = {
     Stage.INTEGRATE.value, Stage.RESOLVE_PASS_1.value,
     Stage.RESOLVE_CHECK.value, Stage.NEEDS_RESOLVE.value,
-    Stage.PRE_SUBMIT.value, Stage.SHELVE.value
+    Stage.PRE_SUBMIT.value, Stage.BUILD.value, Stage.SHELVE.value
 }
 
 class JobStateMachine:
@@ -187,8 +189,12 @@ class JobStateMachine:
         else:
             # If no command defined, check if it's an optional stage
             if next_stage == Stage.PRE_SUBMIT:
-                # PRE_SUBMIT is optional - skip to SHELVE if no hook defined
-                logger.info(f"No pre-submit hook defined for job {job_id}, skipping to SHELVE")
+                # PRE_SUBMIT is optional - skip to BUILD if no hook defined
+                logger.info(f"No pre-submit hook defined for job {job_id}, skipping to BUILD")
+                await self.transition_to(job_id, Stage.BUILD)
+            elif next_stage == Stage.BUILD:
+                # BUILD is optional - skip to SHELVE if no command configured
+                logger.info(f"No build command configured for job {job_id}, skipping to SHELVE")
                 await self.transition_to(job_id, Stage.SHELVE)
             else:
                 # Required stage has no command - this is an error
@@ -390,6 +396,41 @@ echo "CHANGELIST:$cl"
         p4push_cmd = f"cd {workspace} && source {init_script} && bootenv && p4push {trial_flag} -c {{changelist}}"
         # Note: {changelist} placeholder will be replaced in transition_to when we have the actual CL
         
+        # Build/test stage command (master-wide, configured in config.yaml).
+        # If empty/missing, BUILD is skipped (handled in transition_to fallback).
+        build_cfg = self.config.get('build') or {}
+        build_user_cmd = (build_cfg.get('command') or '').strip()
+        lsf_cleanup = bool(build_cfg.get('lsf_cleanup', True))
+
+        if build_user_cmd:
+            if lsf_cleanup:
+                # Wrap user command so that on SIGTERM/SIGINT we diff bjobs
+                # snapshots before/after to find LSF jobs spawned during BUILD,
+                # then bkill them. base64 avoids quoting hell with the user cmd.
+                user_b64 = base64.b64encode(build_user_cmd.encode()).decode()
+                build_cmd = (
+                    f"cd {workspace} && bash -c '"
+                    "set -o pipefail; "
+                    "_LSF_BEFORE=$(bjobs -u $USER -o jobid -noheader 2>/dev/null | sort -u); "
+                    "_kill_lsf() { "
+                    "  _LSF_AFTER=$(bjobs -u $USER -o jobid -noheader 2>/dev/null | sort -u); "
+                    "  _NEW=$(comm -23 <(echo \"$_LSF_AFTER\") <(echo \"$_LSF_BEFORE\") 2>/dev/null); "
+                    "  if [ -n \"$_NEW\" ]; then "
+                    "    echo \"[BUILD-CLEANUP] bkill new LSF jobs: $_NEW\"; "
+                    "    bkill $_NEW 2>&1 || true; "
+                    "  fi; "
+                    "  exit 143; "
+                    "}; "
+                    "trap _kill_lsf TERM INT; "
+                    f"echo {user_b64} | base64 -d > /tmp/.p4i_build_$$.sh && bash /tmp/.p4i_build_$$.sh; "
+                    "_RC=$?; rm -f /tmp/.p4i_build_$$.sh; exit $_RC"
+                    "'"
+                )
+            else:
+                build_cmd = f"cd {workspace} && {build_user_cmd}"
+        else:
+            build_cmd = None  # No build configured -> BUILD will be skipped
+
         commands = {
             Stage.GET_LATEST_CL: get_latest_cl_cmd,
             Stage.SYNC: f"cd {workspace} && source {init_script} && bootenv && p4w sync_all -bsc",
@@ -397,6 +438,7 @@ echo "CHANGELIST:$cl"
             Stage.RESOLVE_PASS_1: f"{p4_base} resolve -am",
             Stage.RESOLVE_CHECK: f"{p4_base} resolve -n",
             Stage.PRE_SUBMIT: spec.get('pre_submit_hook'),
+            Stage.BUILD: build_cmd,
             Stage.SHELVE: shelve_cmd,
             Stage.CLEANUP: f"{p4_base} revert //...",
             Stage.P4PUSH: p4push_cmd
@@ -596,7 +638,8 @@ echo "CHANGELIST:$cl"
         job_id = self.cmd_to_job[cmd_id]
         job = self.jobs[job_id]
         current_stage = Stage(job["stage"])
-        
+        job["current_cmd_id"] = None  # command is done; clear so cancel_job() won't send stale KILL_CMD
+
         logger.info(f"Command {cmd_id} finished: code={exit_code}, job={job_id}, stage={current_stage.value}")
         
         # Check if this job was cancelled — route to CLEANUP/ERROR instead of normal flow
@@ -663,7 +706,8 @@ echo "CHANGELIST:$cl"
             Stage.RESOLVE_PASS_1: Stage.RESOLVE_CHECK,  # Skip redundant PASS_2, go straight to CHECK
             # RESOLVE_CHECK needs output analysis
             # PRE_SUBMIT needs output analysis (implied hook success if exit_code=0)
-            Stage.PRE_SUBMIT: Stage.SHELVE,
+            Stage.PRE_SUBMIT: Stage.BUILD,
+            Stage.BUILD: Stage.SHELVE,
             # SHELVE needs output analysis (name_check remediation is handled inline)
             Stage.P4PUSH: Stage.DONE
         }

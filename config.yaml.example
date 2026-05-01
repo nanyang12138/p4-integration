@@ -21,3 +21,18 @@
 #   backup_count: 10
 #
 # data_dir: /var/lib/p4_integ/data
+#
+# build:
+#   # Build / test stage executed BEFORE shelve.
+#   # If 'command' is empty or this section is omitted, the BUILD stage is skipped.
+#   # On Cancel Job we send SIGTERM to the whole process group, so any local
+#   # children of this command die immediately. When lsf_cleanup is true, we also
+#   # diff `bjobs` snapshots before/after and `bkill` any LSF jobs spawned during
+#   # this BUILD stage (assumes this user does not submit other LSF jobs in the
+#   # meantime - typical for a dedicated build host).
+#   command: |
+#     source /proj/verif_release_ro/cbwa_initscript/current/cbwa_init.bash && \
+#     bootenv && \
+#     clobber all && \
+#     bdji -c -m 8 -v -J lsf -e connectivity::bia_ifrit_logical_view_flow.build -DCOPY_REP
+#   lsf_cleanup: true
