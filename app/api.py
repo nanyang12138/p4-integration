@@ -1,9 +1,10 @@
+import copy
+import asyncio
+import uuid
 from flask import Blueprint, jsonify, request, current_app, redirect, url_for, session
 from app import state_machine, agent_server, workspace_queue, scheduler_manager
 from app.master.bootstrapper import Bootstrapper
 from app.models.template import template_manager
-import asyncio
-import uuid
 
 bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -659,7 +660,6 @@ def retry_job(job_id):
             return jsonify({"error": "Job not found"}), 404
         
         # Create a new job with the same spec (deep copy to avoid mutating original)
-        import copy
         new_job_id = str(uuid.uuid4())
         spec = copy.deepcopy(job.get("spec", {}))
         

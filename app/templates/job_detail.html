@@ -196,16 +196,16 @@
           <div class="bg-slate-50 rounded-lg p-3 space-y-2">
             <div class="flex justify-between items-center">
               <span class="text-slate-500 flex-shrink-0">SSH Host</span>
-              <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 truncate max-w-[140px] cursor-pointer hover:bg-slate-50" title="{{ job.spec.connection.ssh_host }}:{{ job.spec.connection.ssh_port }}" onclick="copyToClipboard('{{ job.spec.connection.ssh_host }}:{{ job.spec.connection.ssh_port }}')">{{ job.spec.connection.ssh_host }}:{{ job.spec.connection.ssh_port }}</code>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 truncate max-w-[140px] cursor-pointer hover:bg-slate-50" title="{{ job.spec.connection.ssh_host }}:{{ job.spec.connection.ssh_port }}" onclick="copyToClipboard({{ (job.spec.connection.ssh_host ~ ':' ~ job.spec.connection.ssh_port) | tojson }})">{{ job.spec.connection.ssh_host }}:{{ job.spec.connection.ssh_port }}</code>
             </div>
             <div class="flex justify-between items-center">
               <span class="text-slate-500 flex-shrink-0">Master</span>
-              <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 truncate max-w-[140px] cursor-pointer hover:bg-slate-50" title="{{ job.spec.connection.master_host }}:{{ job.spec.connection.master_port }}" onclick="copyToClipboard('{{ job.spec.connection.master_host }}:{{ job.spec.connection.master_port }}')">{{ job.spec.connection.master_host }}:{{ job.spec.connection.master_port }}</code>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 truncate max-w-[140px] cursor-pointer hover:bg-slate-50" title="{{ job.spec.connection.master_host }}:{{ job.spec.connection.master_port }}" onclick="copyToClipboard({{ (job.spec.connection.master_host ~ ':' ~ job.spec.connection.master_port) | tojson }})">{{ job.spec.connection.master_host }}:{{ job.spec.connection.master_port }}</code>
             </div>
             <!-- Python Path - full width -->
             <div class="pt-1 border-t border-slate-200">
               <span class="text-slate-500 block mb-1">Python</span>
-              <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 block truncate cursor-pointer hover:bg-slate-50" title="{{ job.spec.connection.python_path or 'python3' }}" onclick="copyToClipboard('{{ job.spec.connection.python_path or 'python3' }}')">{{ job.spec.connection.python_path or 'python3' }}</code>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 block truncate cursor-pointer hover:bg-slate-50" title="{{ job.spec.connection.python_path or 'python3' }}" onclick="copyToClipboard({{ (job.spec.connection.python_path or 'python3') | tojson }})">{{ job.spec.connection.python_path or 'python3' }}</code>
             </div>
           </div>
           {% endif %}
@@ -214,7 +214,7 @@
           {% if job.spec and job.spec.workspace %}
           <div class="bg-slate-50 rounded-lg p-3">
             <span class="text-slate-500 block mb-1">Workspace</span>
-            <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 block truncate cursor-pointer hover:bg-slate-50" title="{{ job.spec.workspace }}" onclick="copyToClipboard('{{ job.spec.workspace }}')">{{ job.spec.workspace }}</code>
+            <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 block truncate cursor-pointer hover:bg-slate-50" title="{{ job.spec.workspace }}" onclick="copyToClipboard({{ job.spec.workspace | tojson }})">{{ job.spec.workspace }}</code>
           </div>
           {% endif %}
           
@@ -223,12 +223,12 @@
           <div class="bg-blue-50 rounded-lg p-3 space-y-2">
             <div class="flex justify-between items-center">
               <span class="text-blue-600 flex-shrink-0">P4 Port</span>
-              <code class="bg-white px-1.5 py-0.5 rounded border border-blue-200 text-blue-700 truncate max-w-[140px] cursor-pointer hover:bg-blue-50" title="{{ job.spec.p4.port }}" onclick="copyToClipboard('{{ job.spec.p4.port }}')">{{ job.spec.p4.port }}</code>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-blue-200 text-blue-700 truncate max-w-[140px] cursor-pointer hover:bg-blue-50" title="{{ job.spec.p4.port }}" onclick="copyToClipboard({{ job.spec.p4.port | tojson }})">{{ job.spec.p4.port }}</code>
             </div>
             <!-- P4 Client - full width -->
             <div class="pt-1 border-t border-blue-200">
               <span class="text-blue-600 block mb-1">P4 Client</span>
-              <code class="bg-white px-1.5 py-0.5 rounded border border-blue-200 text-blue-700 block truncate cursor-pointer hover:bg-blue-50" title="{{ job.spec.p4.client }}" onclick="copyToClipboard('{{ job.spec.p4.client }}')">{{ job.spec.p4.client }}</code>
+              <code class="bg-white px-1.5 py-0.5 rounded border border-blue-200 text-blue-700 block truncate cursor-pointer hover:bg-blue-50" title="{{ job.spec.p4.client }}" onclick="copyToClipboard({{ job.spec.p4.client | tojson }})">{{ job.spec.p4.client }}</code>
             </div>
             <div class="flex justify-between items-center">
               <span class="text-blue-600 flex-shrink-0">P4 User</span>
@@ -247,7 +247,7 @@
           {% if job.agent_id %}
           <div class="bg-green-50 rounded-lg p-3">
             <span class="text-green-600 block mb-1">Agent ID</span>
-            <code class="bg-white px-1.5 py-0.5 rounded border border-green-200 text-green-700 block truncate cursor-pointer hover:bg-green-50 text-[10px]" title="{{ job.agent_id }}" onclick="copyToClipboard('{{ job.agent_id }}')">{{ job.agent_id }}</code>
+            <code class="bg-white px-1.5 py-0.5 rounded border border-green-200 text-green-700 block truncate cursor-pointer hover:bg-green-50 text-[10px]" title="{{ job.agent_id }}" onclick="copyToClipboard({{ job.agent_id | tojson }})">{{ job.agent_id }}</code>
           </div>
           {% endif %}
         </div>

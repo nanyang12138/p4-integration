@@ -3,6 +3,7 @@ JobStateMachine - P4 Integration Job State Machine
 Handles event-driven state transitions based on Agent events.
 """
 import asyncio
+import copy
 import logging
 import uuid
 import re
@@ -74,7 +75,6 @@ class JobStateMachine:
 
     def _persist_job(self, job_id: str):
         """Write job snapshot to disk (password stripped)."""
-        import copy
         job = self.jobs.get(job_id)
         if not job:
             return
@@ -365,7 +365,6 @@ class JobStateMachine:
         # Shell-quote all user-supplied values that are interpolated into commands
         workspace_q = shlex.quote(workspace)
         branch_spec_q = shlex.quote(branch_spec) if branch_spec else None
-        source_q = shlex.quote(source) if source else ''
         target_q = shlex.quote(target) if target else ''
 
         # Build integrate command with explicit parameters
@@ -394,12 +393,16 @@ class JobStateMachine:
         # Get a meaningful name for the spec
         spec_name = branch_spec or spec.get('spec_name', 'N/A')
         user_description = spec.get('description', '')
-        
-        # Build description with user input if provided
-        if user_description:
-            desc_text = f'\\tREVIEW_INTEGRATE\\n\\t[INFRAFIX] Mass integration from {source or branch_spec or "unknown"} @{source_rev_change or "latest"}\\n\\tSPEC: {spec_name}\\n\\t{user_description}'
+
+        # Escape single quotes so they don't break the bash $'...' string in shelve_cmd
+        safe_description = user_description.replace("'", "\\'")
+        safe_spec_name = spec_name.replace("'", "\\'")
+        safe_source = (source or branch_spec or "unknown").replace("'", "\\'")
+
+        if safe_description:
+            desc_text = f'\\tREVIEW_INTEGRATE\\n\\t[INFRAFIX] Mass integration from {safe_source} @{source_rev_change or "latest"}\\n\\tSPEC: {safe_spec_name}\\n\\t{safe_description}'
         else:
-            desc_text = f'\\tREVIEW_INTEGRATE\\n\\t[INFRAFIX] Mass integration from {source or branch_spec or "unknown"} @{source_rev_change or "latest"}\\n\\tSPEC: {spec_name}'
+            desc_text = f'\\tREVIEW_INTEGRATE\\n\\t[INFRAFIX] Mass integration from {safe_source} @{source_rev_change or "latest"}\\n\\tSPEC: {safe_spec_name}'
         
         # Get name_check tool path from config
         name_check_tool = self.config.get("env_init", {}).get("name_check_tool", "/tool/aticad/1.0/src/perforce/name_check_file_list")
@@ -871,9 +874,13 @@ echo "CHANGELIST:$cl"
     def _analyze_get_latest_cl(self, job_id: str) -> Stage:
         """Parse latest changelist number from GET_LATEST_CL output"""
         job = self.jobs[job_id]
-        
-        # Get stdout output
-        stdout_output = "".join([l["data"] for l in self.logs[job_id] if l["stream"] == "stdout"])
+        current_cmd_id = job.get("current_cmd_id")
+
+        # Filter by current cmd_id for consistency with other analyze methods
+        stdout_output = "".join([
+            l["data"] for l in self.logs[job_id]
+            if l["stream"] == "stdout" and l.get("cmd_id") == current_cmd_id
+        ])
         
         # Output should be a pure number (e.g., "8372976")
         cl_number = stdout_output.strip()
