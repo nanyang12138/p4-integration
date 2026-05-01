@@ -573,22 +573,13 @@ echo "CHANGELIST:$cl"
         else:
             build_cmd = None  # No pre-build command -> BUILD will be skipped
 
-        # Workspace pre-flight cleanup: revert all opened files and delete any
-        # shelved/pending CLs owned by this client before syncing.
-        # Uses ';' so a clean workspace (nothing to revert/delete) doesn't fail.
-        # All commands are scoped to {p4_client} — no other workspaces are touched.
-        workspace_cleanup = (
-            f"{p4_base} revert //... ; "
-            f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} changes -s shelved -c {p4_client}"
-            f" | awk '{{print $2}}' | while read cl; do"
-            f"   {p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} shelve -d -c $cl ;"
-            f"   {p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} change -d $cl ;"
-            f" done ; "
-            f"{p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} changes -s pending -c {p4_client}"
-            f" | awk '{{print $2}}' | while read cl; do"
-            f"   {p4_bin} -p {p4_port} -u {p4_user} -P {p4_password_arg} change -d $cl 2>/dev/null || true ;"
-            f" done"
-        )
+        # Workspace pre-flight cleanup: revert all opened files before syncing.
+        # Shelved CLs are intentionally left alone — they may be actively used
+        # by the testing pipeline (p4push submits them to CI) and deleting them
+        # would break in-flight test runs. Shelved files don't interfere with
+        # p4 integrate, so there is no reason to remove them here.
+        # Scoped to p4_client; exit 0 even if nothing is open (|| true).
+        workspace_cleanup = f"{p4_base} revert //... || true"
 
         commands = {
             Stage.GET_LATEST_CL: get_latest_cl_cmd,
