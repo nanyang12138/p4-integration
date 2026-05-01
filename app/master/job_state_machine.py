@@ -578,7 +578,7 @@ echo "CHANGELIST:$cl"
         # by the testing pipeline (p4push submits them to CI) and deleting them
         # would break in-flight test runs. Shelved files don't interfere with
         # p4 integrate, so there is no reason to remove them here.
-        # Scoped to p4_client; exit 0 even if nothing is open (|| true).
+        # Scoped to p4_client. p4 revert exits 0 even when nothing is open.
         workspace_cleanup = f"{p4_base} revert //..."
 
         commands = {
