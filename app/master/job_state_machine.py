@@ -908,9 +908,10 @@ echo "CHANGELIST:$cl"
             if l.get("cmd_id") == current_cmd_id
         ])
         
-        # Check for "No file(s) to resolve" in ALL output (stdout + stderr)
-        # This is the clearest signal that everything is resolved
-        if "No file(s) to resolve" in all_output:
+        # Check for "No file(s) to resolve" or empty output (both mean no conflicts).
+        # Some P4 server versions print the message; others produce no output at all
+        # when there is nothing to resolve. Exit code 0 + no conflict lines = resolved.
+        if not all_output.strip() or "No file(s) to resolve" in all_output:
             job["conflicts"] = []
             logger.info(f"Job {job_id}: No conflicts remaining, proceeding to PRE_SUBMIT")
             return Stage.PRE_SUBMIT
@@ -1068,7 +1069,7 @@ echo "CHANGELIST:$cl"
             
         async def monitor():
             logger.info(f"Started conflict monitor for job {job_id}")
-            check_interval = 60  # seconds between checks
+            check_interval = 20  # seconds between checks
             
             try:
                 while True:
