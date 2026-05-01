@@ -658,9 +658,10 @@ def retry_job(job_id):
         if not job:
             return jsonify({"error": "Job not found"}), 404
         
-        # Create a new job with the same spec
+        # Create a new job with the same spec (deep copy to avoid mutating original)
+        import copy
         new_job_id = str(uuid.uuid4())
-        spec = job.get("spec", {})
+        spec = copy.deepcopy(job.get("spec", {}))
         
         if not spec:
             return jsonify({"error": "Original job has no spec"}), 400
@@ -723,6 +724,13 @@ def retry_job(job_id):
             "master_port": master_port,
             "python_path": python_path
         }
+
+        # Always refresh P4 credentials from current session — the persisted
+        # spec has the password stripped, and credentials may have changed.
+        if "p4" not in spec:
+            spec["p4"] = {}
+        spec["p4"]["user"] = p4_user
+        spec["p4"]["password"] = p4_password
         
         # Create and start the new job with correct agent_id
         # Preserve the original job's owner or use current user
