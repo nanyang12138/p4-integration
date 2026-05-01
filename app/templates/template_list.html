@@ -147,11 +147,24 @@
         <label class="block text-sm font-medium text-slate-700 mb-1">Changelist (optional)</label>
         <input type="text" id="runChangelist" name="changelist" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-primary-500 focus:border-primary-500" placeholder="Leave empty for latest">
       </div>
-      <div class="mb-6">
+      <div class="mb-3">
         <label class="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" id="runTrial" name="trial" class="rounded border-slate-300 text-primary-600 focus:ring-primary-500">
           <span class="text-sm text-slate-700">Trial mode (dry run)</span>
         </label>
+      </div>
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-slate-700 mb-1">Component Updates <span class="text-xs font-normal text-slate-500">(optional)</span></label>
+        <div id="runComponentUpdates" class="space-y-2"></div>
+        <button type="button" onclick="addRunComponentRow()" class="mt-2 inline-flex items-center gap-1 px-3 py-1 text-xs border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50">
+          <i class="fa-solid fa-plus"></i> Add Component
+        </button>
+      </div>
+
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-slate-700 mb-1">Pre-build Command <span class="text-xs font-normal text-slate-500">(optional)</span></label>
+        <textarea id="runBuildCommand" name="build_command" rows="2" placeholder="e.g. bdji -c -m 8 -v -J lsf -e ..." class="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg focus:ring-primary-500 focus:border-primary-500"></textarea>
+        <p class="text-xs text-slate-500 mt-1">Auto-prepends <code>source cbwa_init.bash &amp;&amp; bootenv &amp;&amp; clobber all</code>.</p>
       </div>
       
       <!-- Status message area (shown during submission) -->
@@ -180,13 +193,42 @@ let isSubmitting = false;
 function runTemplate(templateId, workspace) {
   // Prevent opening modal if already submitting
   if (isSubmitting) return;
-  
+
   document.getElementById('runTemplateId').value = templateId;
   if (workspace) {
     document.getElementById('runWorkspace').value = workspace;
   }
+  // Reset component update rows on each open
+  var compList = document.getElementById('runComponentUpdates');
+  if (compList) compList.innerHTML = '';
   document.getElementById('runModal').classList.remove('hidden');
   document.getElementById('runModal').classList.add('flex');
+}
+
+function addRunComponentRow(name, cl) {
+  var list = document.getElementById('runComponentUpdates');
+  if (!list) return;
+  var row = document.createElement('div');
+  row.className = 'flex items-center gap-2';
+  row.innerHTML =
+    '<input type="text" class="comp-name flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg" placeholder="component name">' +
+    '<input type="text" class="comp-cl w-32 px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg" placeholder="changelist">' +
+    '<button type="button" class="px-2 py-1 text-slate-400 hover:text-red-600" onclick="this.parentElement.remove()" title="Remove"><i class="fa-solid fa-trash"></i></button>';
+  list.appendChild(row);
+  if (name) row.querySelector('.comp-name').value = name;
+  if (cl) row.querySelector('.comp-cl').value = cl;
+}
+
+function collectRunComponentUpdates() {
+  var list = document.getElementById('runComponentUpdates');
+  if (!list) return [];
+  var out = [];
+  list.querySelectorAll('.flex').forEach(function(row) {
+    var name = (row.querySelector('.comp-name')?.value || '').trim();
+    var cl = (row.querySelector('.comp-cl')?.value || '').trim();
+    if (name && cl) out.push({name: name, cl: cl});
+  });
+  return out;
 }
 
 function closeRunModal() {
@@ -244,6 +286,8 @@ document.getElementById('runForm').addEventListener('submit', async function(e) 
   const workspace = document.getElementById('runWorkspace').value;
   const changelist = document.getElementById('runChangelist').value;
   const trial = document.getElementById('runTrial').checked;
+  const build_command = document.getElementById('runBuildCommand').value.trim();
+  const component_updates = collectRunComponentUpdates();
   
   // Show loading state immediately with initial status
   setSubmitButtonState(true, 'Connecting to remote machine via SSH...');
@@ -268,7 +312,7 @@ document.getElementById('runForm').addEventListener('submit', async function(e) 
     const response = await fetch(`/api/templates/${templateId}/run`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({workspace, changelist, trial})
+      body: JSON.stringify({workspace, changelist, trial, build_command, component_updates})
     });
     const data = await response.json();
     

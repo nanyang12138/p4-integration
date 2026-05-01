@@ -137,6 +137,8 @@ def run_template(template_id):
     - workspace: Override workspace path
     - changelist: Override changelist
     - trial: Override trial mode
+    - build_command: Override pre-build (BUILD stage) command
+    - component_updates: List of {"name": str, "cl": str} (UPDATE_COMPONENT stage)
     """
     data = request.json or {}
     username = session.get('p4_user')
@@ -159,6 +161,8 @@ def run_template(template_id):
         "path": config.get('path', ''),
         "description": config.get('description', ''),
         "trial": data.get('trial') if 'trial' in data else config.get('trial', False),
+        "build_command": (data.get('build_command') if 'build_command' in data else config.get('build_command', '')) or '',
+        "component_updates": data.get('component_updates') if 'component_updates' in data else config.get('component_updates', []),
         "p4": {
             "user": username,
             "password": p4_password,

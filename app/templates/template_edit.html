@@ -193,12 +193,27 @@
       </div>
 
       <!-- Options -->
-      <div>
+      <div class="space-y-2">
         <label class="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" name="trial" id="trial" {{ 'checked' if template and template.config.trial else '' }}
                  class="rounded border-slate-300 text-primary-600 focus:ring-primary-500">
           <span class="text-sm text-slate-700">Default to trial mode</span>
         </label>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Default Pre-build Command <span class="text-xs font-normal text-slate-500">(optional)</span></label>
+        <textarea name="build_command" id="build_command" rows="2" placeholder="e.g. bdji -c -m 8 -v -J lsf -e ..." class="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg focus:ring-primary-500 focus:border-primary-500">{{ template.config.build_command if template else '' }}</textarea>
+        <p class="text-xs text-slate-500 mt-1">Auto-prepends <code>source cbwa_init.bash &amp;&amp; bootenv &amp;&amp; clobber all</code>. Leave empty to skip BUILD stage.</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Default Component Updates <span class="text-xs font-normal text-slate-500">(optional)</span></label>
+        <p class="text-xs text-slate-500 mb-2">Updates <code>_env/local/env.cfg</code> &lt;ver&gt; for each component, then runs <code>bootenv -v default -u default &amp;&amp; p4w sync_local</code>.</p>
+        <div id="componentUpdatesList" class="space-y-2"></div>
+        <button type="button" onclick="addComponentRow()" class="mt-2 inline-flex items-center gap-1 px-3 py-1 text-xs border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50">
+          <i class="fa-solid fa-plus"></i> Add Component
+        </button>
       </div>
 
       <!-- Submit -->
@@ -258,6 +273,8 @@ document.getElementById('templateForm').addEventListener('submit', async functio
     workspace: formData.get('workspace'),
     description: formData.get('description'),
     trial: formData.get('trial') === 'on',
+    build_command: (formData.get('build_command') || '').trim(),
+    component_updates: collectComponentUpdates(),
     ssh: {
       ssh_host: formData.get('ssh_host'),
       ssh_port: parseInt(formData.get('ssh_port')) || 22,
@@ -295,6 +312,41 @@ document.getElementById('templateForm').addEventListener('submit', async functio
     alert('Error: ' + err.message);
   }
 });
+
+// --- Component Updates dynamic rows ---
+function addComponentRow(name, cl) {
+  var list = document.getElementById('componentUpdatesList');
+  if (!list) return;
+  var row = document.createElement('div');
+  row.className = 'flex items-center gap-2';
+  row.innerHTML =
+    '<input type="text" class="comp-name flex-1 px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg" placeholder="component name (e.g. perf_compass)">' +
+    '<input type="text" class="comp-cl w-32 px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg" placeholder="changelist">' +
+    '<button type="button" class="px-2 py-1 text-slate-400 hover:text-red-600" onclick="this.parentElement.remove()" title="Remove"><i class="fa-solid fa-trash"></i></button>';
+  list.appendChild(row);
+  if (name) row.querySelector('.comp-name').value = name;
+  if (cl) row.querySelector('.comp-cl').value = cl;
+}
+
+function collectComponentUpdates() {
+  var list = document.getElementById('componentUpdatesList');
+  if (!list) return [];
+  var out = [];
+  list.querySelectorAll('.flex').forEach(function(row) {
+    var name = (row.querySelector('.comp-name')?.value || '').trim();
+    var cl = (row.querySelector('.comp-cl')?.value || '').trim();
+    if (name && cl) out.push({name: name, cl: cl});
+  });
+  return out;
+}
+
+// Pre-populate with existing template values
+(function(){
+  var existing = {{ (template.config.component_updates if template and template.config.component_updates else []) | tojson }};
+  if (existing && existing.length) {
+    existing.forEach(function(item){ addComponentRow(item.name, item.cl); });
+  }
+})();
 </script>
 {% endblock %}
 

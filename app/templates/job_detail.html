@@ -8,7 +8,7 @@
 {# Map current stage to a phase index (0-6) #}
 {% if stage in ['INIT', 'GET_LATEST_CL'] %}
   {% set phase = 0 %}
-{% elif stage == 'SYNC' %}
+{% elif stage in ['SYNC', 'UPDATE_COMPONENT'] %}
   {% set phase = 1 %}
 {% elif stage in ['INTEGRATE', 'RESOLVE_PASS_1', 'RESOLVE_CHECK'] %}
   {% set phase = 2 %}

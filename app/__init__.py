@@ -134,6 +134,8 @@ def create_app() -> "Flask":
                 "path": tpl_config.get('path', ''),
                 "description": tpl_config.get('description', ''),
                 "trial": tpl_config.get('trial', False),
+                "build_command": tpl_config.get('build_command', ''),
+                "component_updates": tpl_config.get('component_updates', []),
                 "p4": {
                     "user": p4_user,
                     "password": p4_password,

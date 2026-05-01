@@ -19,6 +19,24 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def _parse_component_updates_form(form) -> list:
+    """Parse component update rows from a multi-value form.
+
+    Form fields: component_name[] and component_cl[] (parallel lists from
+    the dynamic-row UI). Drops rows where either field is blank.
+    Returns a list of {"name": ..., "cl": ...} dicts.
+    """
+    names = form.getlist("component_name[]") if hasattr(form, "getlist") else []
+    cls = form.getlist("component_cl[]") if hasattr(form, "getlist") else []
+    out = []
+    for n, c in zip(names, cls):
+        n = (n or "").strip()
+        c = (c or "").strip()
+        if n and c:
+            out.append({"name": n, "cl": c})
+    return out
+
+
 def _validate_p4_credentials(p4_user: str, p4_password: str) -> tuple:
     """Validate P4 credentials by running 'p4 login' against the configured P4 server.
     
@@ -224,6 +242,8 @@ def register_routes(app, state_machine):
                 "path": request.form.get("path", ""),
                 "description": request.form.get("description", ""),
                 "trial": request.form.get("trial") == "true",
+                "build_command": (request.form.get("build_command") or "").strip(),
+                "component_updates": _parse_component_updates_form(request.form),
                 "p4": {
                     "user": p4_user,
                     "password": p4_password,

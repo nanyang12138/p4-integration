@@ -22,6 +22,7 @@ class Stage(Enum):
     INIT = "INIT"
     GET_LATEST_CL = "GET_LATEST_CL"
     SYNC = "SYNC"
+    UPDATE_COMPONENT = "UPDATE_COMPONENT"
     INTEGRATE = "INTEGRATE"
     RESOLVE_PASS_1 = "RESOLVE_PASS_1"
     RESOLVE_CHECK = "RESOLVE_CHECK"
@@ -37,6 +38,7 @@ class Stage(Enum):
 # Stages where P4 files may be opened and need revert on failure.
 # Used by error handlers and cancel logic to decide if CLEANUP is needed.
 _NEEDS_CLEANUP_STAGE_VALUES = {
+    Stage.UPDATE_COMPONENT.value,
     Stage.INTEGRATE.value, Stage.RESOLVE_PASS_1.value,
     Stage.RESOLVE_CHECK.value, Stage.NEEDS_RESOLVE.value,
     Stage.PRE_SUBMIT.value, Stage.BUILD.value, Stage.SHELVE.value
@@ -188,7 +190,11 @@ class JobStateMachine:
             await self._execute_command(job_id, command)
         else:
             # If no command defined, check if it's an optional stage
-            if next_stage == Stage.PRE_SUBMIT:
+            if next_stage == Stage.UPDATE_COMPONENT:
+                # UPDATE_COMPONENT is optional - skip to INTEGRATE if no updates configured
+                logger.info(f"No component updates configured for job {job_id}, skipping to INTEGRATE")
+                await self.transition_to(job_id, Stage.INTEGRATE)
+            elif next_stage == Stage.PRE_SUBMIT:
                 # PRE_SUBMIT is optional - skip to BUILD if no hook defined
                 logger.info(f"No pre-submit hook defined for job {job_id}, skipping to BUILD")
                 await self.transition_to(job_id, Stage.BUILD)
@@ -396,44 +402,92 @@ echo "CHANGELIST:$cl"
         p4push_cmd = f"cd {workspace} && source {init_script} && bootenv && p4push {trial_flag} -c {{changelist}}"
         # Note: {changelist} placeholder will be replaced in transition_to when we have the actual CL
         
-        # Build/test stage command (master-wide, configured in config.yaml).
-        # If empty/missing, BUILD is skipped (handled in transition_to fallback).
-        build_cfg = self.config.get('build') or {}
-        build_user_cmd = (build_cfg.get('command') or '').strip()
-        lsf_cleanup = bool(build_cfg.get('lsf_cleanup', True))
-
-        if build_user_cmd:
-            if lsf_cleanup:
-                # Wrap user command so that on SIGTERM/SIGINT we diff bjobs
-                # snapshots before/after to find LSF jobs spawned during BUILD,
-                # then bkill them. base64 avoids quoting hell with the user cmd.
-                user_b64 = base64.b64encode(build_user_cmd.encode()).decode()
-                build_cmd = (
-                    f"cd {workspace} && bash -c '"
-                    "set -o pipefail; "
-                    "_LSF_BEFORE=$(bjobs -u $USER -o jobid -noheader 2>/dev/null | sort -u); "
-                    "_kill_lsf() { "
-                    "  _LSF_AFTER=$(bjobs -u $USER -o jobid -noheader 2>/dev/null | sort -u); "
-                    "  _NEW=$(comm -23 <(echo \"$_LSF_AFTER\") <(echo \"$_LSF_BEFORE\") 2>/dev/null); "
-                    "  if [ -n \"$_NEW\" ]; then "
-                    "    echo \"[BUILD-CLEANUP] bkill new LSF jobs: $_NEW\"; "
-                    "    bkill $_NEW 2>&1 || true; "
-                    "  fi; "
-                    "  exit 143; "
-                    "}; "
-                    "trap _kill_lsf TERM INT; "
-                    f"echo {user_b64} | base64 -d > /tmp/.p4i_build_$$.sh && bash /tmp/.p4i_build_$$.sh; "
-                    "_RC=$?; rm -f /tmp/.p4i_build_$$.sh; exit $_RC"
-                    "'"
-                )
-            else:
-                build_cmd = f"cd {workspace} && {build_user_cmd}"
+        # UPDATE_COMPONENT stage: user-provided list of {name, cl} pairs.
+        # We rewrite <ver> in workspace/_env/local/env.cfg, then run
+        # `bootenv -v default -u default && p4w sync_local` to pull the new CLs.
+        # Empty list -> stage skipped via the no-command fallback.
+        component_updates_raw = spec.get('component_updates') or []
+        # Normalize to {name: cl} dict (drop blanks, stringify CL).
+        update_map = {}
+        for item in component_updates_raw:
+            if not isinstance(item, dict):
+                continue
+            n = (item.get('name') or '').strip()
+            v = str(item.get('cl') or '').strip()
+            if n and v:
+                update_map[n] = v
+        if update_map:
+            inline_py = (
+                "import sys, re, json, base64\n"
+                "updates = json.loads(base64.b64decode(\"__UPDATES_B64__\").decode())\n"
+                "path = \"_env/local/env.cfg\"\n"
+                "with open(path) as f: c = f.read()\n"
+                "for name, new_cl in updates.items():\n"
+                "    pat = re.compile(r\"(<component>\\s*<name>\\s*\" + re.escape(name) + r\"\\s*</name>.*?<ver>)([^<]*)(</ver>)\", re.DOTALL)\n"
+                "    m = pat.search(c)\n"
+                "    if not m:\n"
+                "        print(f\"[ERROR] Component {name} not found in {path}\", file=sys.stderr); sys.exit(2)\n"
+                "    old = m.group(2).strip()\n"
+                "    if old == str(new_cl):\n"
+                "        print(f\"[SKIP] {name}: already at {old}\"); continue\n"
+                "    print(f\"[UPDATE] {name}: {old} -> {new_cl}\")\n"
+                "    c = c[:m.start(2)] + str(new_cl) + c[m.end(2):]\n"
+                "with open(path, \"w\") as f: f.write(c)\n"
+            )
+            updates_b64 = base64.b64encode(json.dumps(update_map).encode()).decode()
+            inline_py = inline_py.replace("__UPDATES_B64__", updates_b64)
+            py_b64 = base64.b64encode(inline_py.encode()).decode()
+            # p4 edit env.cfg first - the workspace file is read-only until opened.
+            # Once opened, SHELVE will reopen it into the integration changelist,
+            # so the component bumps land in the same submitted CL.
+            update_component_cmd = (
+                f"cd {workspace} && "
+                f"{p4_base} edit _env/local/env.cfg && "
+                f"python3 -c 'import base64; exec(base64.b64decode(\"{py_b64}\").decode())' && "
+                f"source {init_script} && "
+                f"bootenv -v default -u default && "
+                f"p4w sync_local"
+            )
         else:
-            build_cmd = None  # No build configured -> BUILD will be skipped
+            update_component_cmd = None
+
+        # BUILD stage: user enters their pre-build command (typically `bdji ...`)
+        # in the UI. We auto-prepend the standard env setup. Wrapped so SIGTERM
+        # also bkills any LSF jobs the build spawned. Empty -> BUILD is skipped.
+        user_build_cmd = (spec.get('build_command') or '').strip()
+        if user_build_cmd:
+            build_inner = (
+                "source /proj/verif_release_ro/cbwa_initscript/current/cbwa_init.bash && "
+                "bootenv && "
+                "clobber all && "
+                f"{user_build_cmd}"
+            )
+            inner_b64 = base64.b64encode(build_inner.encode()).decode()
+            build_cmd = (
+                f"cd {workspace} && bash -c '"
+                "set -o pipefail; "
+                "_LSF_BEFORE=$(bjobs -u $USER -o jobid -noheader 2>/dev/null | sort -u); "
+                "_kill_lsf() { "
+                "  _LSF_AFTER=$(bjobs -u $USER -o jobid -noheader 2>/dev/null | sort -u); "
+                "  _NEW=$(comm -23 <(echo \"$_LSF_AFTER\") <(echo \"$_LSF_BEFORE\") 2>/dev/null); "
+                "  if [ -n \"$_NEW\" ]; then "
+                "    echo \"[BUILD-CLEANUP] bkill new LSF jobs: $_NEW\"; "
+                "    bkill $_NEW 2>&1 || true; "
+                "  fi; "
+                "  exit 143; "
+                "}; "
+                "trap _kill_lsf TERM INT; "
+                f"echo {inner_b64} | base64 -d > /tmp/.p4i_build_$$.sh && bash /tmp/.p4i_build_$$.sh; "
+                "_RC=$?; rm -f /tmp/.p4i_build_$$.sh; exit $_RC"
+                "'"
+            )
+        else:
+            build_cmd = None  # No pre-build command -> BUILD will be skipped
 
         commands = {
             Stage.GET_LATEST_CL: get_latest_cl_cmd,
             Stage.SYNC: f"cd {workspace} && source {init_script} && bootenv && p4w sync_all -bsc",
+            Stage.UPDATE_COMPONENT: update_component_cmd,
             Stage.INTEGRATE: integrate_cmd,
             Stage.RESOLVE_PASS_1: f"{p4_base} resolve -am",
             Stage.RESOLVE_CHECK: f"{p4_base} resolve -n",
@@ -701,7 +755,8 @@ echo "CHANGELIST:$cl"
         # Success transitions
         transitions = {
             Stage.GET_LATEST_CL: Stage.SYNC,  # After getting latest CL, go to SYNC
-            Stage.SYNC: Stage.INTEGRATE,
+            Stage.SYNC: Stage.UPDATE_COMPONENT,
+            Stage.UPDATE_COMPONENT: Stage.INTEGRATE,
             Stage.INTEGRATE: Stage.RESOLVE_PASS_1,
             Stage.RESOLVE_PASS_1: Stage.RESOLVE_CHECK,  # Skip redundant PASS_2, go straight to CHECK
             # RESOLVE_CHECK needs output analysis
