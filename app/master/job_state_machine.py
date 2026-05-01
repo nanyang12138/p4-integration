@@ -579,7 +579,7 @@ echo "CHANGELIST:$cl"
         # would break in-flight test runs. Shelved files don't interfere with
         # p4 integrate, so there is no reason to remove them here.
         # Scoped to p4_client; exit 0 even if nothing is open (|| true).
-        workspace_cleanup = f"{p4_base} revert //... || true"
+        workspace_cleanup = f"{p4_base} revert //..."
 
         commands = {
             Stage.GET_LATEST_CL: get_latest_cl_cmd,
