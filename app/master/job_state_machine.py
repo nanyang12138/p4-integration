@@ -15,6 +15,8 @@ from typing import Dict, Optional, List, Any, Callable
 from datetime import datetime
 from enum import Enum
 
+from app.notifications import send_job_notification
+
 # Configure logging
 logger = logging.getLogger("JobStateMachine")
 
@@ -210,6 +212,12 @@ class JobStateMachine:
         if next_stage == Stage.NEEDS_RESOLVE:
             self._start_conflict_monitor(job_id)
             logger.info(f"Job {job_id} waiting for manual conflict resolution")
+            if not job.get("_notified_needs_resolve"):
+                job["_notified_needs_resolve"] = True
+                _base_url = self.config.get("base_url", "")
+                asyncio.get_event_loop().run_in_executor(
+                    None, send_job_notification, dict(job), _base_url
+                )
             return
 
         if next_stage in (Stage.DONE, Stage.ERROR):
@@ -223,6 +231,10 @@ class JobStateMachine:
             await self._shutdown_agent(job_id, "Job completed successfully")
             self._release_workspace(job_id)
             self._persist_job(job_id)
+            _base_url = self.config.get("base_url", "")
+            asyncio.get_event_loop().run_in_executor(
+                None, send_job_notification, dict(job), _base_url
+            )
             return
 
         if next_stage == Stage.ERROR:
@@ -230,6 +242,10 @@ class JobStateMachine:
             await self._shutdown_agent(job_id, "Job failed")
             self._release_workspace(job_id)
             self._persist_job(job_id)
+            _base_url = self.config.get("base_url", "")
+            asyncio.get_event_loop().run_in_executor(
+                None, send_job_notification, dict(job), _base_url
+            )
             return
         
         if next_stage == Stage.CLEANUP:

@@ -27,6 +27,31 @@
 {% set is_error = (stage == 'ERROR') %}
 {% set is_done = (stage == 'DONE') %}
 
+{# When the job failed, compute the phase where failure actually occurred.
+   Walk history IN ORDER and keep the last non-terminal stage — same logic
+   as _last_real_stage() in notifications.py. Using last-by-order (not max-phase)
+   because PRE_SUBMIT (phase 5) runs before BUILD (phase 4), so max-phase would
+   incorrectly point to Submit when the job fails during Build. #}
+{% set _phase_map = {
+  'INIT': 0, 'GET_LATEST_CL': 0,
+  'SYNC': 1, 'UPDATE_COMPONENT': 1,
+  'INTEGRATE': 2, 'RESOLVE_PASS_1': 2, 'RESOLVE_CHECK': 2,
+  'NEEDS_RESOLVE': 3,
+  'BUILD': 4,
+  'PRE_SUBMIT': 5, 'SHELVE': 5, 'P4PUSH': 5, 'CLEANUP': 5,
+  'DONE': 6, 'ERROR': 6
+} %}
+{% set _skip = ['CLEANUP', 'ERROR', 'DONE'] %}
+{% set _last_real = namespace(value='') %}
+{% if is_error and job.history %}
+  {% for h in job.history %}
+    {% if h.to not in _skip %}
+      {% set _last_real.value = h.to %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{% set failure_phase = namespace(value=_phase_map.get(_last_real.value, 0)) %}
+
 <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-6 py-4 mb-6">
   <div class="flex items-center justify-between mb-3">
     <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Integration Progress</h3>
@@ -46,8 +71,10 @@
 
     {% for name, icon, idx in phases %}
       {# Determine node state #}
-      {% if is_error and idx == phase %}
+      {% if is_error and idx == failure_phase.value %}
         {% set node_state = 'error' %}
+      {% elif is_error and idx > failure_phase.value %}
+        {% set node_state = 'pending' %}
       {% elif idx < phase %}
         {% set node_state = 'done' %}
       {% elif idx == phase %}
@@ -90,7 +117,9 @@
       {# Connector line (not after last item) #}
       {% if not loop.last %}
       <div class="flex-1 h-0.5 mx-1 mb-5
-        {% if idx < phase %}bg-emerald-400
+        {% if is_error %}
+          {% if idx < failure_phase.value %}bg-emerald-400{% else %}bg-slate-200{% endif %}
+        {% elif idx < phase %}bg-emerald-400
         {% else %}bg-slate-200
         {% endif %}"></div>
       {% endif %}
