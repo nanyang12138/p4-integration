@@ -5,7 +5,7 @@
   <div class="mb-6 flex items-center justify-between">
     <div>
       <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Connection Settings</h2>
-      <p class="text-sm text-slate-500 mt-1">Configure SSH and Agent connection parameters.</p>
+      <p class="text-sm text-slate-500 mt-1">Configure the Agent host and connection parameters.</p>
     </div>
   </div>
 
@@ -22,29 +22,21 @@
     <div class="p-6">
       <form method="post" action="/settings" class="space-y-6">
         
-        <!-- SSH Configuration -->
+        <!-- Agent Deployment -->
         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-4">
           <div class="flex items-center gap-2">
-            <i class="fa-solid fa-terminal text-blue-600"></i>
-            <h3 class="text-sm font-semibold text-blue-900">SSH Configuration</h3>
+            <i class="fa-solid fa-robot text-blue-600"></i>
+            <h3 class="text-sm font-semibold text-blue-900">Agent Deployment</h3>
           </div>
-          <p class="text-xs text-blue-700">Configure the remote machine where P4 commands will be executed.</p>
+          <p class="text-xs text-blue-700">Configure the remote machine where the Agent will be deployed to run P4 commands.</p>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-medium text-blue-800 mb-1">SSH Host <span class="text-red-500">*</span></label>
-              <input type="text" name="ssh_host" id="ssh_host"
-                     value="{{ session.get('ssh_host', '') }}"
-                     class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
-                     placeholder="e.g. srdcws990.amd.com" required>
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-blue-800 mb-1">SSH Port</label>
-              <input type="number" name="ssh_port" id="ssh_port"
-                     value="{{ session.get('ssh_port', 22) }}"
-                     class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
-                     placeholder="22">
-            </div>
+          <div>
+            <label class="block text-xs font-medium text-blue-800 mb-1">Agent Host <span class="text-red-500">*</span></label>
+            <input type="text" name="ssh_host" id="ssh_host"
+                   value="{{ session.get('ssh_host', '') }}"
+                   class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
+                   placeholder="e.g. srdcws990.amd.com" required>
+            <p class="mt-1 text-xs text-blue-600">The remote machine where P4 commands will run.</p>
           </div>
 
           <div>
@@ -55,33 +47,42 @@
                    placeholder="/tool/pandora64/bin/python3.11">
             <p class="mt-1 text-xs text-blue-600">Python interpreter path on the remote machine.</p>
           </div>
-        </div>
 
-        <!-- Agent/Master Configuration -->
-        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-4">
-          <div class="flex items-center gap-2">
-            <i class="fa-solid fa-network-wired text-blue-600"></i>
-            <h3 class="text-sm font-semibold text-blue-900">Agent Connection</h3>
-          </div>
-          <p class="text-xs text-blue-700">Configure how the Agent connects back to this Master server.</p>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-medium text-blue-800 mb-1">Master Host <span class="text-red-500">*</span></label>
-              <input type="text" name="master_host" id="master_host"
-                     value="{{ session.get('master_host', '') or master_host }}"
-                     class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
-                     placeholder="e.g. 10.67.190.37" required>
-              <p class="mt-1 text-xs text-blue-600">IP/hostname reachable from the SSH host.</p>
+          <!-- Advanced -->
+          <details id="advancedSection" class="border border-blue-200 rounded-md overflow-hidden">
+            <summary class="px-3 py-2 cursor-pointer hover:bg-blue-100/60 transition-colors flex items-center gap-2 select-none bg-blue-100/40">
+              <i class="fa-solid fa-chevron-right text-[10px] text-blue-600 transition-transform details-chevron"></i>
+              <span class="text-xs font-medium text-blue-800">Advanced</span>
+            </summary>
+            <div class="px-3 pb-3 pt-3 space-y-3 bg-white/60">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-blue-800 mb-1">Agent SSH Port</label>
+                  <input type="number" name="ssh_port" id="ssh_port"
+                         value="{{ session.get('ssh_port', 22) }}"
+                         class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
+                         placeholder="22">
+                  <p class="mt-1 text-[10px] text-blue-600">Default 22. Change only if SSH runs on a non-standard port.</p>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-blue-800 mb-1">Master Port</label>
+                  <input type="number" name="master_port" id="master_port"
+                         value="{{ session.get('master_port', 9090) }}"
+                         class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
+                         placeholder="9090">
+                  <p class="mt-1 text-[10px] text-blue-600">Default 9090. Port this server listens on for agent connections.</p>
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-blue-800 mb-1">Master Host <span class="text-red-500">*</span></label>
+                <input type="text" name="master_host" id="master_host"
+                       value="{{ session.get('master_host', '') or master_host }}"
+                       class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
+                       placeholder="e.g. 10.67.190.37" required>
+                <p class="mt-1 text-[10px] text-blue-600">This server's IP — auto-filled. The agent connects back here after deployment.</p>
+              </div>
             </div>
-            <div>
-              <label class="block text-xs font-medium text-blue-800 mb-1">Master Port</label>
-              <input type="number" name="master_port" id="master_port"
-                     value="{{ session.get('master_port', 9090) }}"
-                     class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
-                     placeholder="9090">
-            </div>
-          </div>
+          </details>
         </div>
 
         <!-- Current Session Info -->
@@ -116,12 +117,12 @@
       <div class="text-xs text-blue-800 space-y-2">
         <p><strong>How it works:</strong></p>
         <ol class="list-decimal ml-4 space-y-1">
-          <li>Master connects to <strong>SSH Host</strong> via SSH using your P4 credentials.</li>
+          <li>Master connects to <strong>Agent Host</strong> via SSH using your P4 credentials.</li>
           <li>Master deploys an Agent script on the remote machine.</li>
-          <li>Agent connects back to <strong>Master Host:Port</strong> to receive commands.</li>
+          <li>Agent connects back to <strong>Master Host</strong> to receive commands.</li>
           <li>P4 commands execute in the remote workspace.</li>
         </ol>
-        <p class="mt-2"><strong>Tip:</strong> Make sure the Master Host IP is reachable from the SSH Host machine.</p>
+        <p class="mt-2"><strong>Tip:</strong> Master Host is auto-filled — it must be reachable from the Agent Host machine.</p>
       </div>
     </div>
   </div>
@@ -150,6 +151,13 @@
       });
     }
   });
+
+  // Auto-open Advanced if master_host has no value after loading
+  const masterHost = document.getElementById('master_host');
+  const advancedSection = document.getElementById('advancedSection');
+  if (masterHost && advancedSection && !masterHost.value.trim()) {
+    advancedSection.open = true;
+  }
 })();
 </script>
 {% endblock %}

@@ -12,7 +12,10 @@
   <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
     <div class="p-6">
       <form method="post" action="/admin/submit" class="space-y-6">
-        
+
+        <!-- Agent Status Bar -->
+        <div id="agentStatusBar" class="hidden rounded-lg px-4 py-2.5 flex items-center justify-between gap-3 text-sm"></div>
+
         <!-- P4 Configuration -->
         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
           <div class="flex items-center justify-between">
@@ -111,41 +114,51 @@
           </div>
         </div>
 
-        <!-- SSH/Agent Configuration (Collapsible) -->
+        <!-- Agent Connection (Collapsible) -->
         <details id="sshConfigSection" class="bg-blue-50 border border-blue-200 rounded-lg overflow-hidden">
           <summary class="px-4 py-3 cursor-pointer hover:bg-blue-100/50 transition-colors flex items-center gap-2 select-none">
             <i class="fa-solid fa-chevron-right text-[10px] text-blue-600 transition-transform details-chevron"></i>
-            <i class="fa-solid fa-terminal text-blue-600 text-sm"></i>
-            <span class="text-sm font-semibold text-blue-900">SSH / Agent Connection</span>
-            <span id="sshConfigStatus" class="ml-auto text-xs text-blue-600"></span>
+            <i class="fa-solid fa-robot text-blue-600 text-sm"></i>
+            <span class="text-sm font-semibold text-blue-900">Agent Connection</span>
+            <span id="sshConfigStatus" class="ml-auto text-xs"></span>
           </summary>
           <div class="px-4 pb-4 pt-2 space-y-4 border-t border-blue-200">
-            <p class="text-xs text-blue-700">Configure how to connect to the remote machine and how the Agent connects back.</p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs font-medium text-blue-800 mb-1">SSH Host <span class="text-red-500">*</span></label>
-                <input type="text" name="ssh_host" id="ssh_host" value="{{ session.get('ssh_host', '') }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="e.g. atletx8-neu006.amd.com" required>
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-blue-800 mb-1">SSH Port</label>
-                <input type="number" name="ssh_port" id="ssh_port" value="{{ session.get('ssh_port', 22) }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="22">
-              </div>
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs font-medium text-blue-800 mb-1">Master Host <span class="text-red-500">*</span></label>
-                <input type="text" name="master_host" id="master_host" value="{{ session.get('master_host', '') or master_host }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="e.g. 10.67.190.37" required>
-                <p class="mt-1 text-[10px] text-blue-600">IP/hostname reachable from SSH host</p>
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-blue-800 mb-1">Master Port</label>
-                <input type="number" name="master_port" id="master_port" value="{{ session.get('master_port', 9090) }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="9090">
-              </div>
+            <p class="text-xs text-blue-700">Configure the remote machine where the Agent will be deployed.</p>
+            <div>
+              <label class="block text-xs font-medium text-blue-800 mb-1">Agent Host <span class="text-red-500">*</span></label>
+              <input type="text" name="ssh_host" id="ssh_host" value="{{ session.get('ssh_host', '') }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="e.g. srdcws990.amd.com" required>
+              <p class="mt-1 text-[10px] text-blue-600">The remote machine where P4 commands will run.</p>
             </div>
             <div>
               <label class="block text-xs font-medium text-blue-800 mb-1">Remote Python Path</label>
               <input type="text" name="python_path" id="python_path" value="{{ session.get('python_path', '/tool/pandora64/bin/python3.11') }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="/tool/pandora64/bin/python3.11">
             </div>
+            <!-- Advanced -->
+            <details class="border border-blue-200 rounded-md overflow-hidden">
+              <summary class="px-3 py-2 cursor-pointer hover:bg-blue-100/60 transition-colors flex items-center gap-2 select-none bg-blue-100/40">
+                <i class="fa-solid fa-chevron-right text-[10px] text-blue-600 transition-transform details-chevron"></i>
+                <span class="text-xs font-medium text-blue-800">Advanced</span>
+              </summary>
+              <div class="px-3 pb-3 pt-3 space-y-3 bg-white/60">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs font-medium text-blue-800 mb-1">Agent SSH Port</label>
+                    <input type="number" name="ssh_port" id="ssh_port" value="{{ session.get('ssh_port', 22) }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="22">
+                    <p class="mt-1 text-[10px] text-blue-600">Default 22. Change only if SSH runs on a non-standard port.</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-blue-800 mb-1">Master Port</label>
+                    <input type="number" name="master_port" id="master_port" value="{{ session.get('master_port', 9090) }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="9090">
+                    <p class="mt-1 text-[10px] text-blue-600">Default 9090. Port this server listens on for agent connections.</p>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-blue-800 mb-1">Master Host <span class="text-red-500">*</span></label>
+                  <input type="text" name="master_host" id="master_host" value="{{ session.get('master_host', '') or master_host }}" class="block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white" placeholder="e.g. 10.67.190.37" required>
+                  <p class="mt-1 text-[10px] text-blue-600">This server's IP — auto-filled. The agent connects back here after deployment.</p>
+                </div>
+              </div>
+            </details>
           </div>
         </details>
 
@@ -273,19 +286,48 @@
     }
   });
 
-  // SSH config status indicator & auto-open
+  // Agent config status indicator, status bar, & auto-open
   function updateSSHStatus() {
     const sshHost = document.getElementById('ssh_host');
     const masterHost = document.getElementById('master_host');
     const statusEl = document.getElementById('sshConfigStatus');
     const section = document.getElementById('sshConfigSection');
-    if (!sshHost || !masterHost || !statusEl) return;
-    
-    const configured = sshHost.value.trim() && masterHost.value.trim();
-    statusEl.textContent = configured ? 'Configured' : 'Not configured';
-    statusEl.className = 'ml-auto text-xs ' + (configured ? 'text-green-600 font-medium' : 'text-red-500 font-medium');
-    
-    // Auto-open if not configured
+    const bar = document.getElementById('agentStatusBar');
+    if (!sshHost || !masterHost) return;
+
+    const host = sshHost.value.trim();
+    const master = masterHost.value.trim();
+    const configured = host && master;
+
+    // Summary badge
+    if (statusEl) {
+      if (configured) {
+        statusEl.textContent = '✓ ' + host;
+        statusEl.className = 'ml-auto text-xs text-emerald-600 font-medium';
+      } else {
+        statusEl.textContent = 'Not configured';
+        statusEl.className = 'ml-auto text-xs text-red-500 font-medium';
+      }
+    }
+
+    // Top status bar
+    if (bar) {
+      bar.classList.remove('hidden');
+      if (configured) {
+        bar.className = 'rounded-lg px-4 py-2.5 flex items-center justify-between gap-3 text-sm bg-emerald-50 border border-emerald-200';
+        bar.innerHTML = '<div class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-emerald-500"></i>'
+          + '<span class="font-medium text-emerald-800">Agent ready</span>'
+          + '<span class="text-emerald-700">→ <code class="font-mono text-xs bg-emerald-100 px-1.5 py-0.5 rounded">' + host + '</code></span></div>'
+          + '<a href="/settings" class="text-xs text-emerald-600 hover:text-emerald-800 hover:underline shrink-0">Change →</a>';
+      } else {
+        bar.className = 'rounded-lg px-4 py-2.5 flex items-center gap-3 text-sm bg-amber-50 border border-amber-200';
+        bar.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-amber-500 shrink-0"></i>'
+          + '<span class="text-amber-800"><strong>Agent not configured</strong> — enter the Agent Host below, or '
+          + '<a href="/settings" class="underline hover:text-amber-900">save it in Settings</a> for future jobs.</span>';
+      }
+    }
+
+    // Auto-open section if not configured
     if (!configured && section) {
       section.open = true;
     }
