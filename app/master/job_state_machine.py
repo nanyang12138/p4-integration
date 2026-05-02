@@ -548,6 +548,7 @@ echo "CHANGELIST:$cl"
             build_inner = (
                 f"source {init_script} && "
                 "bootenv && "
+                "p4w sync_local && "
                 "clobber all && "
                 f"{user_build_cmd}"
             )
