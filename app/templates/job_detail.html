@@ -195,7 +195,7 @@
           {% if job.spec and job.spec.connection %}
           <div class="bg-slate-50 rounded-lg p-3 space-y-2">
             <div class="flex justify-between items-center">
-              <span class="text-slate-500 flex-shrink-0">SSH Host</span>
+              <span class="text-slate-500 flex-shrink-0">Agent Host</span>
               <code class="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 truncate max-w-[140px] cursor-pointer hover:bg-slate-50" title="{{ job.spec.connection.ssh_host }}:{{ job.spec.connection.ssh_port }}" onclick="copyToClipboard({{ (job.spec.connection.ssh_host ~ ':' ~ job.spec.connection.ssh_port) | tojson }})">{{ job.spec.connection.ssh_host }}:{{ job.spec.connection.ssh_port }}</code>
             </div>
             <div class="flex justify-between items-center">

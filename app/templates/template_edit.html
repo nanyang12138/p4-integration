@@ -145,22 +145,22 @@
 
       <hr class="border-slate-200">
 
-      <!-- SSH Configuration -->
+      <!-- Agent Deployment -->
       <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-4">
         <h3 class="text-sm font-semibold text-blue-900 flex items-center gap-2">
-          <i class="fa-solid fa-terminal text-blue-600"></i> SSH Configuration
+          <i class="fa-solid fa-robot text-blue-600"></i> Agent Deployment
         </h3>
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-medium text-blue-800 mb-1">SSH Host</label>
+            <label class="block text-xs font-medium text-blue-800 mb-1">Agent Host</label>
             <input type="text" name="ssh_host" id="ssh_host"
                    value="{{ template.config.ssh.ssh_host if template and template.config.ssh else '' }}"
                    class="w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
-                   placeholder="e.g. atletx8-neu22">
+                   placeholder="e.g. srdcws990.amd.com">
           </div>
           <div>
-            <label class="block text-xs font-medium text-blue-800 mb-1">SSH Port</label>
+            <label class="block text-xs font-medium text-blue-800 mb-1">Agent SSH Port</label>
             <input type="number" name="ssh_port" id="ssh_port"
                    value="{{ template.config.ssh.ssh_port if template and template.config.ssh else 22 }}"
                    class="w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm bg-white">
